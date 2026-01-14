@@ -23,6 +23,7 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
+import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import theme, { UI_COLORS as COLORS } from './theme';
 import StockLegend from './components/StockLegend';
 
@@ -1023,17 +1024,31 @@ function App() {
                     </ToggleButton>
                   </Tooltip>
 
-                  {!isAutoScale && (
-                    <Button 
-                      variant="text" 
-                      size="small" 
-                      onClick={handleResetScale}
-                      sx={{ color: COLORS.accent, fontSize: '0.75rem', fontWeight: 600, minWidth: 'auto', px: 1, '&:hover': { bgcolor: 'rgba(240, 185, 11, 0.1)' } }}
-                    >
-                      RESET SCALE
-                    </Button>
-                  )}
-
+                                      {!isAutoScale && (
+                                        <Tooltip title="Reset chart scale">
+                                          <Button 
+                                            variant="outlined" 
+                                            size="small" 
+                                            startIcon={<CenterFocusStrongIcon sx={{ fontSize: '1rem !important' }} />}
+                                            onClick={handleResetScale}
+                                            sx={{ 
+                                              color: COLORS.textPrimary, 
+                                              borderColor: COLORS.borderLight,
+                                              fontSize: '0.75rem', 
+                                              fontWeight: 500, 
+                                              height: 32,
+                                              px: 1.5,
+                                              '&:hover': { 
+                                                  bgcolor: 'rgba(255, 255, 255, 0.05)',
+                                                  borderColor: COLORS.accent,
+                                                  color: COLORS.accent
+                                              } 
+                                            }}
+                                          >
+                                            Reset scale
+                                          </Button>
+                                        </Tooltip>
+                                      )}
                   <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
                     <Tooltip title="Zoom In">
                       <IconButton onClick={handleZoomIn} size="small" sx={{ border: `1px solid ${COLORS.borderLight}`, borderRadius: 1, color: COLORS.textPrimary, p: '4px' }}>
