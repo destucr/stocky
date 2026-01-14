@@ -129,6 +129,22 @@ func main() {
 						"name": "Polkadot / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
 					},
+					"BINANCE:BTCUSDC": {
+						"name": "Bitcoin / USDC",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+					},
+					"BINANCE:THEUSDT": {
+						"name": "Thena / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/28373/small/thena.png",
+					},
+					"BINANCE:WUSDT": {
+						"name": "Wormhole / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/36653/small/wormhole.png",
+					},
+					"ACCTRY": {
+						"name": "Ascent / TRY",
+						"logo": "https://www.google.com/s2/favicons?domain=ascent.com&sz=128",
+					},
 					"AAPL": {
 						"name": "Apple Inc.",
 						"logo": "https://www.google.com/s2/favicons?domain=apple.com&sz=128",
