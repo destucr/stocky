@@ -483,9 +483,20 @@ function App() {
   // Handle Scale Change
   useEffect(() => {
     if (chartRef.current) {
+      // Clear manual range tracking when switching modes to avoid coordinate mismatches
+      lastRangeRef.current = null;
+      setIsAutoScale(true);
+      isAutoScaleRef.current = true;
+
       chartRef.current.priceScale('right').applyOptions({
+        autoScale: true,
         mode: isLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
       });
+      
+      // Force a slight delay and re-apply autoScale to ensure candles are re-plotted
+      setTimeout(() => {
+        chartRef.current?.priceScale('right').applyOptions({ autoScale: true });
+      }, 50);
     }
   }, [isLogScale]);
 
@@ -1111,6 +1122,24 @@ function App() {
                 >
                     <Box ref={volumeContainerRef} sx={{ width: '100%', height: '100%' }} />
                 </Box>
+            </Box>
+
+            <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  color: COLORS.textSecondary, 
+                  fontSize: '0.65rem',
+                  opacity: 0.7,
+                  '& a': { 
+                    color: COLORS.accent, 
+                    textDecoration: 'none',
+                    '&:hover': { textDecoration: 'underline' }
+                  } 
+                }}
+              >
+                Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">TradingView</a>
+              </Typography>
             </Box>
             
           </Paper>
