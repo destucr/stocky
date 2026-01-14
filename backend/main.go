@@ -131,31 +131,31 @@ func main() {
 					},
 					"AAPL": {
 						"name": "Apple Inc.",
-						"logo": "https://logo.clearbit.com/apple.com",
+						"logo": "https://www.google.com/s2/favicons?domain=apple.com&sz=128",
 					},
 					"MSFT": {
 						"name": "Microsoft Corporation",
-						"logo": "https://logo.clearbit.com/microsoft.com",
+						"logo": "https://www.google.com/s2/favicons?domain=microsoft.com&sz=128",
 					},
 					"GOOGL": {
 						"name": "Alphabet Inc.",
-						"logo": "https://logo.clearbit.com/google.com",
+						"logo": "https://www.google.com/s2/favicons?domain=google.com&sz=128",
 					},
 					"AMZN": {
 						"name": "Amazon.com, Inc.",
-						"logo": "https://logo.clearbit.com/amazon.com",
+						"logo": "https://www.google.com/s2/favicons?domain=amazon.com&sz=128",
 					},
 					"TSLA": {
 						"name": "Tesla, Inc.",
-						"logo": "https://logo.clearbit.com/tesla.com",
+						"logo": "https://www.google.com/s2/favicons?domain=tesla.com&sz=128",
 					},
 					"NVDA": {
 						"name": "NVIDIA Corporation",
-						"logo": "https://logo.clearbit.com/nvidia.com",
+						"logo": "https://www.google.com/s2/favicons?domain=nvidia.com&sz=128",
 					},
 					"META": {
 						"name": "Meta Platforms, Inc.",
-						"logo": "https://logo.clearbit.com/meta.com",
+						"logo": "https://www.google.com/s2/favicons?domain=meta.com&sz=128",
 					},
 				}
 				w.Header().Set("Content-Type", "application/json")
