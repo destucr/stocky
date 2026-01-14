@@ -1,0 +1,37 @@
+# OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Env
+.env
+*.env
+.env.local
+.env.*.local
+
+# Databases
+postgres_data/
+
+# Backend (Go)
+backend/stocky-backend
+backend/bin/
+backend/*.exe
+backend/*.test
+backend/*.prof
+backend/vendor/
+
+# Frontend (Node/React)
+node_modules/
+frontend/web/node_modules/
+frontend/web/dist/
+frontend/web/build/
+frontend/web/.next/
+frontend/web/.vercel/
+frontend/web/*.log
+frontend/web/npm-debug.log*
+frontend/web/yarn-debug.log*
+frontend/web/yarn-error.log*
+frontend/web/.eslintcache
+frontend/web/.stylelintcache
+frontend/web/vite.config.ts.timestamp-*

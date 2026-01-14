@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stocky WebSocket Test</title>
+</head>
+<body>
+    <h1>Stocky Live Trades</h1>
+    <div id="messages" style="height: 400px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px;"></div>
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const socket = new WebSocket('ws://localhost:8080/ws');
+
+        socket.onmessage = function(event) {
+            const message = document.createElement('div');
+            message.textContent = event.data;
+            messagesDiv.prepend(message);
+        };
+
+        socket.onopen = function() {
+            console.log('Connected to Stocky WebSocket');
+        };
+
+        socket.onclose = function() {
+            console.log('Disconnected from Stocky WebSocket');
+        };
+    </script>
+</body>
+</html>
