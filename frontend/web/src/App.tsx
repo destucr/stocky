@@ -15,20 +15,17 @@ import {
   ToggleButton,
   Tooltip,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
   Button
 } from '@mui/material';
+import { ThemeProvider } from '@mui/material/styles';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time, PriceScaleMode, MouseEventParams } from 'lightweight-charts';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
-import InfoIcon from '@mui/icons-material/Info';
+import theme, { UI_COLORS as COLORS } from './theme';
+import StockLegend from './components/StockLegend';
 
 // Types corresponding to backend
 interface TradeData {
@@ -105,18 +102,24 @@ function App() {
   const [activeSymbol, setActiveSymbol] = useState<string>('');
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [symbolMetadata, setSymbolMetadata] = useState<Record<string, SymbolMetadata>>({});
+  const symbolMetadataRef = useRef<Record<string, SymbolMetadata>>({});
   const [isConnected, setIsConnected] = useState(false);
   const [chartType, setChartType] = useState<'candlestick' | 'line'>('candlestick');
   const [isLogScale, setIsLogScale] = useState(false);
   const [timeframe, setTimeframe] = useState<number>(60);
   const timeframeRef = useRef(timeframe);
   const lastSymbolRef = useRef<string>('');
-  const [infoOpen, setInfoOpen] = useState(false);
   const [isAutoScale, setIsAutoScale] = useState(true);
   const lastPriceRef = useRef<number | null>(null);
   const isAutoScaleRef = useRef(true);
   const lastRangeRef = useRef<{ from: number, to: number } | null>(null);
   
+  // State for legend - replacement for innerHTML
+  const [legendData, setLegendData] = useState<{
+    candle: any;
+    mas: any;
+  }>({ candle: null, mas: {} });
+
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const legendRef = useRef<HTMLDivElement>(null); // Ref for the legend
@@ -147,10 +150,15 @@ function App() {
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
+        console.log('Fetching symbol metadata...');
         const response = await fetch('http://localhost:8080/api/metadata');
         if (response.ok) {
           const data = await response.json();
+          console.log('Metadata received:', data);
           setSymbolMetadata(data);
+          symbolMetadataRef.current = data;
+        } else {
+          console.error('Metadata API error:', response.status);
         }
       } catch (err) {
         console.error('Failed to fetch metadata:', err);
@@ -159,97 +167,27 @@ function App() {
     fetchMetadata();
   }, []);
 
-  // Helper to format precision nicely
-  const formatVal = (val: number | null | undefined) => {
-    if (val === undefined || val === null) return '-';
-    if (val >= 1000) return val.toFixed(2);
-    if (val >= 1) return val.toFixed(2);
-    return val.toPrecision(5);
-  };
+  // Update ref whenever state changes to ensure closures see latest data
+  useEffect(() => {
+    symbolMetadataRef.current = symbolMetadata;
+    // If we already have a live candle, update the legend immediately to show the new logo/name
+    if (currentCandleRef.current && activeSymbol) {
+        updateLegendUI(
+            currentCandleRef.current, 
+            activeSymbol,
+            ma7HistoryRef.current[ma7HistoryRef.current.length - 1]?.value,
+            ma25HistoryRef.current[ma25HistoryRef.current.length - 1]?.value,
+            ma99HistoryRef.current[ma99HistoryRef.current.length - 1]?.value
+        );
+    }
+  }, [symbolMetadata, activeSymbol]);
 
-  // Legend Updater
-  const updateLegendUI = (candle: any, symbol: string, ma7?: number, ma25?: number, ma99?: number) => {
-    if (!legendRef.current) return;
-    const isUp = candle.close >= candle.open;
-    const color = isUp ? UI_COLORS.success : UI_COLORS.danger;
-    const volStr = candle.volume >= 1000 ? `${(candle.volume / 1000).toFixed(2)}K` : (candle.volume || 0).toFixed(0);
-    const meta = symbolMetadata[symbol] || { name: symbol, logo: '' };
-
-    legendRef.current.innerHTML = `
-      <div style="
-        display: flex; 
-        flex-direction: column; 
-        gap: 8px; 
-        background: ${UI_COLORS.overlayBg};
-        backdrop-filter: blur(8px);
-        padding: 10px 14px;
-        border-radius: 6px;
-        border: 1px solid ${UI_COLORS.overlayBorder};
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        min-width: fit-content;
-        user-select: text;
-      ">
-        <!-- Symbol and Price Row -->
-        <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                ${meta.logo ? `<img src="${meta.logo}" style="width: 20px; height: 20px; border-radius: 50%;" />` : ''}
-                <div style="display: flex; flex-direction: column;">
-                    <span style="font-weight: 600; font-size: 14px; color: ${UI_COLORS.accent};">${meta.name}</span>
-                    <span style="font-size: 10px; color: ${UI_COLORS.textSecondary}; letter-spacing: 0.02em;">${symbol}</span>
-                </div>
-            </div>
-            
-            <div style="display: flex; gap: 12px; font-size: 13px;">
-              <div style="display: flex; flex-direction: column;">
-                <span style="color: ${UI_COLORS.textSecondary}; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1px;">Open</span>
-                <span style="color: ${color}; font-family: 'Roboto Mono', monospace; font-weight: 500;">${formatVal(candle.open)}</span>
-              </div>
-              <div style="display: flex; flex-direction: column;">
-                <span style="color: ${UI_COLORS.textSecondary}; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1px;">High</span>
-                <span style="color: ${color}; font-family: 'Roboto Mono', monospace; font-weight: 500;">${formatVal(candle.high)}</span>
-              </div>
-              <div style="display: flex; flex-direction: column;">
-                <span style="color: ${UI_COLORS.textSecondary}; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1px;">Low</span>
-                <span style="color: ${color}; font-family: 'Roboto Mono', monospace; font-weight: 500;">${formatVal(candle.low)}</span>
-              </div>
-              <div style="display: flex; flex-direction: column;">
-                <span style="color: ${UI_COLORS.textSecondary}; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1px;">Close</span>
-                <span style="color: ${color}; font-family: 'Roboto Mono', monospace; font-weight: 500;">${formatVal(candle.close)}</span>
-              </div>
-              <div style="display: flex; flex-direction: column;">
-                <span style="color: ${UI_COLORS.textSecondary}; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1px;">Volume</span>
-                <span style="color: ${UI_COLORS.textPrimary}; font-family: 'Roboto Mono', monospace; font-weight: 500;">${volStr}</span>
-              </div>
-            </div>
-        </div>
-
-        <!-- Indicators Row -->
-        <div style="
-            display: flex; 
-            gap: 12px; 
-            align-items: center; 
-            font-size: 11px;
-            padding-top: 4px;
-            border-top: 1px solid rgba(71, 77, 87, 0.2);
-        ">
-            <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="width: 8px; height: 2px; background: ${UI_COLORS.ma7}; border-radius: 1px;"></span>
-                <span style="color: ${UI_COLORS.textSecondary};">MA(7)</span>
-                <span style="color: ${UI_COLORS.ma7}; font-family: 'Roboto Mono', monospace; font-weight: 500;">${formatVal(ma7)}</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="width: 8px; height: 2px; background: ${UI_COLORS.ma25}; border-radius: 1px;"></span>
-                <span style="color: ${UI_COLORS.textSecondary};">MA(25)</span>
-                <span style="color: ${UI_COLORS.ma25}; font-family: 'Roboto Mono', monospace; font-weight: 500;">${formatVal(ma25)}</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 4px;">
-                <span style="width: 8px; height: 2px; background: ${UI_COLORS.ma99}; border-radius: 1px;"></span>
-                <span style="color: ${UI_COLORS.textSecondary};">MA(99)</span>
-                <span style="color: ${UI_COLORS.ma99}; font-family: 'Roboto Mono', monospace; font-weight: 500;">${formatVal(ma99)}</span>
-            </div>
-        </div>
-      </div>
-    `;
+  // Legend Updater - Now uses React state
+  const updateLegendUI = (candle: any, _symbol: string, ma7?: number, ma25?: number, ma99?: number) => {
+    setLegendData({
+        candle,
+        mas: { ma7, ma25, ma99 }
+    });
   };
 
   // Initialize Chart
@@ -291,43 +229,43 @@ function App() {
       });
 
       const candlestickSeries = chart.addCandlestickSeries({
-        upColor: UI_COLORS.success, 
-        downColor: UI_COLORS.danger, 
+        upColor: COLORS.success, 
+        downColor: COLORS.danger, 
         borderVisible: false, 
-        wickUpColor: UI_COLORS.success, 
-        wickDownColor: UI_COLORS.danger, 
+        wickUpColor: COLORS.success, 
+        wickDownColor: COLORS.danger, 
         visible: chartType === 'candlestick',
         priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
       });
 
       const lineSeries = chart.addLineSeries({
-        color: UI_COLORS.ma99,
+        color: COLORS.accent,
         lineWidth: 2,
         visible: chartType === 'line',
       });
 
       const volumeSeries = chart.addHistogramSeries({
-        color: UI_COLORS.success,
+        color: COLORS.success,
         priceFormat: { type: 'volume' },
         priceScaleId: '', 
       });
 
       const ma7Series = chart.addLineSeries({
-        color: UI_COLORS.ma7,
+        color: COLORS.ma7,
         lineWidth: 1,
         title: 'MA7',
         visible: true,
       });
 
       const ma25Series = chart.addLineSeries({
-        color: UI_COLORS.ma25,
+        color: COLORS.ma25,
         lineWidth: 1,
         title: 'MA25',
         visible: true,
       });
 
       const ma99Series = chart.addLineSeries({
-        color: UI_COLORS.ma99,
+        color: COLORS.ma99,
         lineWidth: 1,
         title: 'MA99',
         visible: true,
@@ -822,249 +760,205 @@ function App() {
   };
 
   return (
-    <Box sx={{ flexGrow: 1, height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: UI_COLORS.background, color: UI_COLORS.textPrimary }}>
-      <AppBar position="static" sx={{ bgcolor: UI_COLORS.surface, backgroundImage: 'none', borderBottom: `1px solid ${UI_COLORS.border}` }}>
-        <Toolbar variant="dense">
-          <ShowChartIcon sx={{ mr: 2, color: UI_COLORS.accent }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 500, fontSize: '1.1rem', letterSpacing: '0.02em', color: UI_COLORS.textPrimary }}>
-            Stocky Terminal
-          </Typography>
-          <Chip 
-            label={isConnected ? "Connected" : "Disconnected"} 
-            variant="outlined" 
-            size="small"
+    <ThemeProvider theme={theme}>
+      <Box sx={{ flexGrow: 1, height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: COLORS.background, color: COLORS.textPrimary }}>
+        <AppBar position="static" sx={{ bgcolor: COLORS.surface, backgroundImage: 'none', borderBottom: `1px solid ${COLORS.border}` }}>
+          <Toolbar variant="dense">
+            <ShowChartIcon sx={{ mr: 2, color: COLORS.accent }} />
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 500, fontSize: '1.1rem', letterSpacing: '0.02em', color: COLORS.textPrimary }}>
+              Stocky
+            </Typography>
+            <Chip 
+              label={isConnected ? "Connected" : "Disconnected"} 
+              variant="outlined" 
+              size="small"
+              sx={{ 
+                  mr: 1, height: 24, fontSize: '0.75rem', 
+                  color: isConnected ? COLORS.success : COLORS.danger,
+                  borderColor: isConnected ? 'rgba(38, 166, 154, 0.3)' : 'rgba(239, 83, 80, 0.3)',
+                  bgcolor: isConnected ? 'rgba(38, 166, 154, 0.05)' : 'rgba(239, 83, 80, 0.05)'
+              }}
+            />
+          </Toolbar>
+        </AppBar>
+
+        <Container maxWidth="xl" sx={{ mt: 2, mb: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+          <Paper 
+            elevation={0} 
             sx={{ 
-                mr: 1, height: 24, fontSize: '0.75rem', 
-                color: isConnected ? UI_COLORS.success : UI_COLORS.danger,
-                borderColor: isConnected ? 'rgba(38, 166, 154, 0.3)' : 'rgba(239, 83, 80, 0.3)',
-                bgcolor: isConnected ? 'rgba(38, 166, 154, 0.05)' : 'rgba(239, 83, 80, 0.05)'
-            }}
-          />
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="xl" sx={{ mt: 2, mb: 2, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-        <Paper 
-          elevation={0} 
-          sx={{ 
-            p: 2, 
-            display: 'flex', 
-            flexDirection: 'column', 
-            height: '100%', 
-            bgcolor: UI_COLORS.surface, 
-            borderRadius: 1,
-            border: `1px solid ${UI_COLORS.border}`,
-          }}
-        >
-          
-          <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
-             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel id="symbol-select-label" sx={{ color: UI_COLORS.textSecondary, fontSize: '0.85rem' }}>Symbol</InputLabel>
-                    <Select
-                      labelId="symbol-select-label"
-                      value={activeSymbol}
-                      label="Symbol"
-                      onChange={(e) => setActiveSymbol(e.target.value)}
-                      sx={{ color: UI_COLORS.textPrimary, fontSize: '0.85rem', '.MuiOutlinedInput-notchedOutline': { borderColor: UI_COLORS.borderLight } }}
-                    >
-                      {availableSymbols.map((s) => (
-                        <MenuItem key={s} value={s} sx={{ fontSize: '0.85rem' }}>{s}</MenuItem>
-                      ))}
-                      {availableSymbols.length === 0 && <MenuItem disabled>Waiting for data...</MenuItem>}
-                    </Select>
-                </FormControl>
-                
-                <FormControl variant="outlined" size="small" sx={{ minWidth: 120 }}>
-                    <InputLabel id="timeframe-select-label" sx={{ color: UI_COLORS.textSecondary, fontSize: '0.85rem' }}>Timeframe</InputLabel>
-                    <Select
-                      labelId="timeframe-select-label"
-                      value={timeframe}
-                      label="Timeframe"
-                      onChange={(e) => setTimeframe(Number(e.target.value))}
-                      sx={{ color: UI_COLORS.textPrimary, fontSize: '0.85rem', '.MuiOutlinedInput-notchedOutline': { borderColor: UI_COLORS.borderLight } }}
-                    >
-                      {AVAILABLE_TIMEFRAMES.map((tf) => (
-                        <MenuItem key={tf.value} value={tf.value} sx={{ fontSize: '0.85rem' }}>{tf.label}</MenuItem>
-                      ))}
-                    </Select>
-                </FormControl>
-
-                <ToggleButtonGroup
-                  value={chartType}
-                  exclusive
-                  onChange={(_, value) => value && setChartType(value)}
-                  size="small"
-                  aria-label="chart type"
-                  sx={{ bgcolor: UI_COLORS.border, height: 32 }}
-                >
-                  <Tooltip title="Candlestick Chart">
-                    <ToggleButton value="candlestick" sx={{ border: 'none', color: UI_COLORS.textSecondary, '&.Mui-selected': { color: UI_COLORS.accent, bgcolor: UI_COLORS.borderLight } }}>
-                      <BarChartIcon fontSize="small" />
-                    </ToggleButton>
-                  </Tooltip>
-                  <Tooltip title="Line Chart">
-                    <ToggleButton value="line" sx={{ border: 'none', color: UI_COLORS.textSecondary, '&.Mui-selected': { color: UI_COLORS.accent, bgcolor: UI_COLORS.borderLight } }}>
-                      <TimelineIcon fontSize="small" />
-                    </ToggleButton>
-                  </Tooltip>
-                </ToggleButtonGroup>
-
-                <Tooltip title={isLogScale ? "Switch to Linear Scale" : "Switch to Logarithmic Scale"}>
-                  <ToggleButton
-                    value="check"
-                    selected={isLogScale}
-                    onChange={() => setIsLogScale(!isLogScale)}
-                    size="small"
-                    sx={{ height: 32, color: UI_COLORS.textSecondary, border: `1px solid ${UI_COLORS.borderLight}`, '&.Mui-selected': { color: UI_COLORS.accent, bgcolor: UI_COLORS.borderLight, borderColor: UI_COLORS.borderLight } }}
-                  >
-                    <Typography variant="caption" sx={{ fontWeight: 600, px: 0.5 }}>LOG</Typography>
-                  </ToggleButton>
-                </Tooltip>
-
-                {!isAutoScale && (
-                  <Button 
-                    variant="text" 
-                    size="small" 
-                    onClick={handleResetScale}
-                    sx={{ color: UI_COLORS.accent, fontSize: '0.75rem', fontWeight: 600, minWidth: 'auto', px: 1, '&:hover': { bgcolor: 'rgba(240, 185, 11, 0.1)' } }}
-                  >
-                    RESET SCALE
-                  </Button>
-                )}
-
-                <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
-                  <Tooltip title="Zoom In">
-                    <IconButton onClick={handleZoomIn} size="small" sx={{ border: `1px solid ${UI_COLORS.borderLight}`, borderRadius: 1, color: UI_COLORS.textPrimary, p: '4px' }}>
-                      <ZoomInIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Zoom Out">
-                    <IconButton onClick={handleZoomOut} size="small" sx={{ border: `1px solid ${UI_COLORS.borderLight}`, borderRadius: 1, color: UI_COLORS.textPrimary, p: '4px' }}>
-                      <ZoomOutIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Info">
-                    <IconButton onClick={() => setInfoOpen(true)} size="small" sx={{ border: `1px solid ${UI_COLORS.borderLight}`, borderRadius: 1, color: UI_COLORS.textSecondary, p: '4px' }}>
-                      <InfoIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-             </Box>
-
-             <Typography variant="subtitle2" sx={{ fontWeight: 500, color: UI_COLORS.accent, opacity: 0.9 }}>
-               {activeSymbol ? `Live: ${activeSymbol}` : "Select a symbol"}
-             </Typography>
-          </Box>
-
-          <Box 
-            sx={{ 
-              flexGrow: 1, 
-              width: '100%', 
-              position: 'relative',
-              border: `1px solid ${UI_COLORS.border}`,
+              p: 2, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              height: '100%', 
+              bgcolor: COLORS.surface, 
               borderRadius: 1,
-              overflow: 'hidden',
-              bgcolor: UI_COLORS.background
-            }} 
+              border: `1px solid ${COLORS.border}`,
+            }}
           >
-             <div 
-               ref={legendRef} 
-               style={{ 
-                 position: 'absolute', 
-                 top: 12, 
-                 left: 12, 
-                 zIndex: 10,
-                 color: UI_COLORS.textPrimary,
-                 pointerEvents: 'none' // allow clicking through to chart
-               }} 
-             />
-             <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
-          </Box>
-          
-        </Paper>
-      </Container>
+            
+            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <FormControl variant="outlined" size="small" sx={{ minWidth: 180 }}>
+                      <InputLabel id="symbol-select-label" sx={{ color: COLORS.textSecondary, fontSize: '0.85rem' }}>Symbol</InputLabel>
+                      <Select
+                        labelId="symbol-select-label"
+                        value={activeSymbol}
+                        label="Symbol"
+                        onChange={(e) => setActiveSymbol(e.target.value)}
+                        sx={{ color: COLORS.textPrimary, fontSize: '0.85rem', '.MuiOutlinedInput-notchedOutline': { borderColor: COLORS.borderLight } }}
+                        renderValue={(selected) => {
+                          const meta = symbolMetadata[selected];
+                          return (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {meta?.logo && <img src={meta.logo} style={{ width: 16, height: 16, borderRadius: '50%' }} />}
+                              <Typography sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                                {meta ? meta.name : selected}
+                              </Typography>
+                            </Box>
+                          );
+                        }}
+                      >
+                        {availableSymbols.map((s) => {
+                          const meta = symbolMetadata[s];
+                          const exchange = s.split(':')[0];
+                          return (
+                            <MenuItem key={s} value={s} sx={{ py: 1, px: 1.5 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                      {meta?.logo ? (
+                                          <img src={meta.logo} style={{ width: 24, height: 24, borderRadius: '50%' }} />
+                                      ) : (
+                                          <Box sx={{ width: 24, height: 24, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                              <ShowChartIcon sx={{ fontSize: 14, color: COLORS.textDisabled }} />
+                                          </Box>
+                                      )}
+                                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                          <Typography sx={{ fontSize: '0.85rem', fontWeight: 500, color: COLORS.textPrimary, lineHeight: 1.2 }}>
+                                              {meta ? meta.name : s}
+                                          </Typography>
+                                          <Typography sx={{ fontSize: '0.7rem', color: COLORS.textSecondary, letterSpacing: '0.02em' }}>
+                                              {s}
+                                          </Typography>
+                                      </Box>
+                                  </Box>
+                                  <Box sx={{ 
+                                      fontSize: '0.65rem', 
+                                      fontWeight: 600, 
+                                      color: COLORS.textSecondary, 
+                                      bgcolor: 'rgba(255,255,255,0.05)', 
+                                      px: 0.8, py: 0.2, 
+                                      borderRadius: 1,
+                                      border: '1px solid rgba(255,255,255,0.1)'
+                                  }}>
+                                      {exchange}
+                                  </Box>
+                              </Box>
+                            </MenuItem>
+                          );
+                        })}
+                        {availableSymbols.length === 0 && <MenuItem disabled>Waiting for data...</MenuItem>}
+                      </Select>
+                  </FormControl>
+                  
+                  <FormControl variant="outlined" size="small" sx={{ minWidth: 120 }}>
+                      <InputLabel id="timeframe-select-label" sx={{ color: COLORS.textSecondary, fontSize: '0.85rem' }}>Timeframe</InputLabel>
+                      <Select
+                        labelId="timeframe-select-label"
+                        value={timeframe}
+                        label="Timeframe"
+                        onChange={(e) => setTimeframe(Number(e.target.value))}
+                        sx={{ color: COLORS.textPrimary, fontSize: '0.85rem', '.MuiOutlinedInput-notchedOutline': { borderColor: COLORS.borderLight } }}
+                      >
+                        {AVAILABLE_TIMEFRAMES.map((tf) => (
+                          <MenuItem key={tf.value} value={tf.value} sx={{ fontSize: '0.85rem' }}>{tf.label}</MenuItem>
+                        ))}
+                      </Select>
+                  </FormControl>
 
-      <Dialog
-        open={infoOpen}
-        onClose={() => setInfoOpen(false)}
-        aria-labelledby="info-dialog-title"
-        disableRestoreFocus // Fixes aria-hidden focus warning
-        PaperProps={{
-          sx: {
-            bgcolor: UI_COLORS.surface,
-            color: UI_COLORS.textPrimary,
-            borderRadius: 2,
-            border: `1px solid ${UI_COLORS.borderLight}`
-          }
-        }}
-      >
-        <DialogTitle id="info-dialog-title" sx={{ color: UI_COLORS.accent, fontWeight: 500 }}>
-          Chart Timeframe and Zoom Behavior
-        </DialogTitle>
-        <DialogContent dividers sx={{ borderColor: UI_COLORS.borderLight }}>
-          <DialogContentText component="div" sx={{ color: UI_COLORS.textPrimary }}>
-            <Typography variant="h6" gutterBottom sx={{ color: UI_COLORS.accent, fontSize: '1rem' }}>
-              1. What happens to the current chart
-            </Typography>
-            <Typography variant="body2" gutterBottom sx={{ color: UI_COLORS.textPrimary }}>
-              When the timeframe is changed (e.g., 1s → 5s), the chart re-aggregates price data using the new interval. 
-              The currently forming candle is reset and recalculated. A new active candle is created representing 
-              the current window, ensuring the chart advances according to the new boundaries.
-            </Typography>
+                  <ToggleButtonGroup
+                    value={chartType}
+                    exclusive
+                    onChange={(_, value) => value && setChartType(value)}
+                    size="small"
+                    aria-label="chart type"
+                    sx={{ bgcolor: COLORS.border, height: 32 }}
+                  >
+                    <Tooltip title="Candlestick Chart">
+                      <ToggleButton value="candlestick" sx={{ border: 'none', color: COLORS.textSecondary, '&.Mui-selected': { color: COLORS.accent, bgcolor: COLORS.borderLight } }}>
+                        <BarChartIcon fontSize="small" />
+                      </ToggleButton>
+                    </Tooltip>
+                    <Tooltip title="Line Chart">
+                      <ToggleButton value="line" sx={{ border: 'none', color: COLORS.textSecondary, '&.Mui-selected': { color: COLORS.accent, bgcolor: COLORS.borderLight } }}>
+                        <TimelineIcon fontSize="small" />
+                      </ToggleButton>
+                    </Tooltip>
+                  </ToggleButtonGroup>
 
-            <Typography variant="h6" gutterBottom sx={{ color: UI_COLORS.accent, fontSize: '1rem', mt: 2 }}>
-              2. What happens to previous candles
-            </Typography>
-            <Typography variant="body2" gutterBottom sx={{ color: UI_COLORS.textPrimary }}>
-              Previous candles are discarded and historical data is grouped into the new interval:
-            </Typography>
-            <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
-              <li><Typography variant="caption" sx={{ color: UI_COLORS.textPrimary }}><strong>Open:</strong> First price in the new window</Typography></li>
-              <li><Typography variant="caption" sx={{ color: UI_COLORS.textPrimary }}><strong>High:</strong> Highest price in the window</Typography></li>
-              <li><Typography variant="caption" sx={{ color: UI_COLORS.textPrimary }}><strong>Low:</strong> Lowest price in the window</Typography></li>
-              <li><Typography variant="caption" sx={{ color: UI_COLORS.textPrimary }}><strong>Close:</strong> Last price in the window</Typography></li>
-            </ul>
+                  <Tooltip title={isLogScale ? "Switch to Linear Scale" : "Switch to Logarithmic Scale"}>
+                    <ToggleButton
+                      value="check"
+                      selected={isLogScale}
+                      onChange={() => setIsLogScale(!isLogScale)}
+                      size="small"
+                      sx={{ height: 32, color: COLORS.textSecondary, border: `1px solid ${COLORS.borderLight}`, '&.Mui-selected': { color: COLORS.accent, bgcolor: COLORS.borderLight, borderColor: COLORS.borderLight } }}
+                    >
+                      <Typography variant="caption" sx={{ fontWeight: 600, px: 0.5 }}>LOG</Typography>
+                    </ToggleButton>
+                  </Tooltip>
 
-            <Typography variant="h6" gutterBottom sx={{ color: UI_COLORS.accent, fontSize: '1rem', mt: 2 }}>
-              3. What changes visually
-            </Typography>
-            <Typography variant="body2" gutterBottom sx={{ color: UI_COLORS.textPrimary }}>
-              The chart becomes less granular. Candles represent longer durations, reducing short-term noise 
-               and making broader trends easier to identify.
-            </Typography>
+                  {!isAutoScale && (
+                    <Button 
+                      variant="text" 
+                      size="small" 
+                      onClick={handleResetScale}
+                      sx={{ color: COLORS.accent, fontSize: '0.75rem', fontWeight: 600, minWidth: 'auto', px: 1, '&:hover': { bgcolor: 'rgba(240, 185, 11, 0.1)' } }}
+                    >
+                      RESET SCALE
+                    </Button>
+                  )}
 
-            <Typography variant="h6" gutterBottom sx={{ color: UI_COLORS.accent, fontSize: '1rem', mt: 2 }}>
-              4. What remains unchanged
-            </Typography>
-            <Typography variant="body2" gutterBottom sx={{ color: UI_COLORS.textPrimary }}>
-              The underlying raw price data remains the same. The time axis remains continuous, and the 
-              current market price is unaffected—only the grouping logic changes.
-            </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.5, ml: 1 }}>
+                    <Tooltip title="Zoom In">
+                      <IconButton onClick={handleZoomIn} size="small" sx={{ border: `1px solid ${COLORS.borderLight}`, borderRadius: 1, color: COLORS.textPrimary, p: '4px' }}>
+                        <ZoomInIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Zoom Out">
+                      <IconButton onClick={handleZoomOut} size="small" sx={{ border: `1px solid ${COLORS.borderLight}`, borderRadius: 1, color: COLORS.textPrimary, p: '4px' }}>
+                        <ZoomOutIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+               </Box>
+            </Box>
 
-            <Typography variant="h6" gutterBottom sx={{ color: UI_COLORS.accent, fontSize: '1rem', mt: 2 }}>
-              5. Moving Averages (MA)
-            </Typography>
-            <Typography variant="body2" gutterBottom sx={{ color: UI_COLORS.textPrimary }}>
-              MA smooths price data by calculating the average closing price over a fixed number of past candles:
-            </Typography>
-            <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
-              <li><Typography variant="caption" sx={{ color: UI_COLORS.textPrimary }}><span style={{color: UI_COLORS.ma7}}>MA7:</span> Short-term, reacts quickly to price changes.</Typography></li>
-              <li><Typography variant="caption" sx={{ color: UI_COLORS.textPrimary }}><span style={{color: UI_COLORS.ma25}}>MA25:</span> Medium-term, smoother, filters noise.</Typography></li>
-              <li><Typography variant="caption" sx={{ color: UI_COLORS.textPrimary }}><span style={{color: UI_COLORS.ma99}}>MA99:</span> Long-term, shows overall trend.</Typography></li>
-            </ul>
-            <Typography variant="body2" sx={{ mt: 1, color: UI_COLORS.textPrimary }}>
-              Each MA value is recalculated every time a new candle is completed or updated.
-            </Typography>
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setInfoOpen(false)} variant="contained" sx={{ bgcolor: UI_COLORS.accent, color: '#000', '&:hover': { bgcolor: '#D4A309' }, fontWeight: 600 }}>
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+            <Box 
+              sx={{ 
+                flexGrow: 1, 
+                width: '100%', 
+                position: 'relative',
+                border: `1px solid ${COLORS.border}`,
+                borderRadius: 1,
+                overflow: 'hidden',
+                bgcolor: COLORS.background
+              }} 
+            >
+               <Box sx={{ position: 'absolute', top: 12, left: 12, zIndex: 10 }}>
+                 <StockLegend 
+                    symbol={activeSymbol}
+                    metadata={symbolMetadata[activeSymbol]}
+                    candle={legendData.candle}
+                    mas={legendData.mas}
+                 />
+               </Box>
+               <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
+            </Box>
+            
+          </Paper>
+        </Container>
+      </Box>
+    </ThemeProvider>
   );
 }
 
