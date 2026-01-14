@@ -10,7 +10,7 @@ interface StockLegendProps {
 }
 
 export interface StockLegendRef {
-  update: (data: { candle: any; mas: any }) => void;
+  update: (data: { candle: any; mas: any; tickColor?: string }) => void;
 }
 
 const formatVal = (val: number | null | undefined) => {
@@ -32,15 +32,16 @@ const StockLegend = forwardRef<StockLegendRef, StockLegendProps>(({ symbol, meta
   const [imgError, setImgError] = React.useState(false);
 
   useImperativeHandle(ref, () => ({
-    update: ({ candle, mas }) => {
+    update: ({ candle, mas, tickColor }) => {
       if (!candle) return;
       const isUp = candle.close >= candle.open;
-      const color = isUp ? UI_COLORS.success : UI_COLORS.danger;
+      const candleColor = isUp ? UI_COLORS.success : UI_COLORS.danger;
+      const priceColor = tickColor || candleColor;
       
-      if (openRef.current) { openRef.current.innerText = formatVal(candle.open); openRef.current.style.color = color; }
-      if (highRef.current) { highRef.current.innerText = formatVal(candle.high); highRef.current.style.color = color; }
-      if (lowRef.current) { lowRef.current.innerText = formatVal(candle.low); lowRef.current.style.color = color; }
-      if (closeRef.current) { closeRef.current.innerText = formatVal(candle.close); closeRef.current.style.color = color; }
+      if (openRef.current) { openRef.current.innerText = formatVal(candle.open); openRef.current.style.color = candleColor; }
+      if (highRef.current) { highRef.current.innerText = formatVal(candle.high); highRef.current.style.color = candleColor; }
+      if (lowRef.current) { lowRef.current.innerText = formatVal(candle.low); lowRef.current.style.color = candleColor; }
+      if (closeRef.current) { closeRef.current.innerText = formatVal(candle.close); closeRef.current.style.color = priceColor; }
       
       if (volRef.current) {
         const v = candle.volume || 0;

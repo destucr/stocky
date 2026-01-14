@@ -92,6 +92,7 @@ function App() {
   const lastSymbolRef = useRef<string>('');
   const [isAutoScale, setIsAutoScale] = useState(true);
   const lastPriceRef = useRef<number | null>(null);
+  const lastRealPriceRef = useRef<number | null>(null);
   const isAutoScaleRef = useRef(true);
   const lastRangeRef = useRef<{ from: number, to: number } | null>(null);
   
@@ -166,10 +167,11 @@ function App() {
   }, [symbolMetadata, activeSymbol]);
 
   // Legend Updater - Now uses Ref for performance
-  const updateLegendUI = (candle: any, _symbol: string, ma7?: number, ma25?: number, ma99?: number) => {
+  const updateLegendUI = (candle: any, _symbol: string, ma7?: number, ma25?: number, ma99?: number, tickColor?: string) => {
     legendRef.current?.update({
         candle,
-        mas: { ma7, ma25, ma99 }
+        mas: { ma7, ma25, ma99 },
+        tickColor
     });
   };
 
@@ -830,13 +832,30 @@ function App() {
     const time = candleTime as Time;
     const price = trade.p;
     
+    // Determine tick color based on price change (proxy for buy/sell side)
+    let tickColor = COLORS.textPrimary;
+    if (lastRealPriceRef.current !== null) {
+        if (price > lastRealPriceRef.current) tickColor = COLORS.success;
+        else if (price < lastRealPriceRef.current) tickColor = COLORS.danger;
+    }
+    lastRealPriceRef.current = price;
+
     // Instant Chart Update
     if (chartType === 'candlestick') {
-        seriesRef.current?.update(currentCandleRef.current!);
+        if (seriesRef.current) {
+            seriesRef.current.update(currentCandleRef.current!);
+            seriesRef.current.applyOptions({ priceLineColor: tickColor });
+        }
     } else if (chartType === 'line') {
-        lineSeriesRef.current?.update({ time, value: price });
+        if (lineSeriesRef.current) {
+            lineSeriesRef.current.update({ time, value: price });
+            lineSeriesRef.current.applyOptions({ priceLineColor: tickColor });
+        }
     } else {
-        areaSeriesRef.current?.update({ time, value: price });
+        if (areaSeriesRef.current) {
+            areaSeriesRef.current.update({ time, value: price });
+            areaSeriesRef.current.applyOptions({ priceLineColor: tickColor });
+        }
     }
 
     volumeSeriesRef.current?.update({
@@ -848,7 +867,7 @@ function App() {
     if (v25 !== null) ma25SeriesRef.current?.update({ time, value: v25 });
     if (v99 !== null) ma99SeriesRef.current?.update({ time, value: v99 });
 
-    updateLegendUI(currentCandleRef.current, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined);
+    updateLegendUI(currentCandleRef.current, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined, tickColor);
   };
 
   const calculateLastMA = (period: number, currentPrice: number) => {
