@@ -544,23 +544,30 @@ function App() {
       ws.onmessage = (event) => {
         if (!isComponentMounted) return;
         try {
-          const message: BackendMessage = JSON.parse(event.data);
-          if (message.type === 'trade') {
-            const receivedSymbols = new Set(message.data.map(t => t.s));
-            setAvailableSymbols(prev => {
-              const newSymbols = Array.from(receivedSymbols).filter(s => !prev.includes(s));
-              return newSymbols.length > 0 ? [...prev, ...newSymbols].sort() : prev;
-            });
+          // Finnhub sometimes sends multiple JSON objects in one frame separated by newlines
+          const raw = event.data.toString();
+          const parts = raw.split('\n').filter((p: string) => p.trim().length > 0);
 
-            // Process all trades in the message but only update chart for the active symbol once
-            const trades = message.data.filter(t => t.s === activeSymbolRef.current);
-            if (trades.length > 0) {
-                // If multiple trades exist for the same symbol in one frame, 
-                // we process them sequentially but the charting library is efficient 
-                // enough to handle these micro-updates.
-                trades.forEach(trade => processTrade(trade));
+          parts.forEach((jsonStr: string) => {
+            try {
+              const message: BackendMessage = JSON.parse(jsonStr);
+              if (message.type === 'trade') {
+                const receivedSymbols = new Set(message.data.map(t => t.s));
+                setAvailableSymbols(prev => {
+                  const newSymbols = Array.from(receivedSymbols).filter(s => !prev.includes(s));
+                  return newSymbols.length > 0 ? [...prev, ...newSymbols].sort() : prev;
+                });
+
+                // Process all trades in the message but only update chart for the active symbol
+                const trades = message.data.filter(t => t.s === activeSymbolRef.current);
+                if (trades.length > 0) {
+                    trades.forEach(trade => processTrade(trade));
+                }
+              }
+            } catch (innerErr) {
+              console.error("Single frame parse error:", innerErr, "Raw string:", jsonStr);
             }
-          }
+          });
         } catch (err) { console.error("WS Error:", err); }
       };
     };
