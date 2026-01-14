@@ -50,7 +50,9 @@ const StockLegend: React.FC<StockLegendProps> = ({ symbol, metadata, candle, mas
 
   const isUp = candle.close >= candle.open;
   const priceColor = isUp ? UI_COLORS.success : UI_COLORS.danger;
-  const volStr = candle.volume >= 1000 ? `${(candle.volume / 1000).toFixed(2)}K` : candle.volume.toFixed(0);
+  
+  const volume = candle.volume || 0;
+  const volStr = volume >= 1000 ? `${(volume / 1000).toFixed(2)}K` : volume.toFixed(0);
 
   return (
     <Box sx={{
