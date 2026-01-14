@@ -29,6 +29,7 @@ const StockLegend = forwardRef<StockLegendRef, StockLegendProps>(({ symbol, meta
   const ma7Ref = useRef<HTMLElement>(null);
   const ma25Ref = useRef<HTMLElement>(null);
   const ma99Ref = useRef<HTMLElement>(null);
+  const [imgError, setImgError] = React.useState(false);
 
   useImperativeHandle(ref, () => ({
     update: ({ candle, mas }) => {
@@ -57,6 +58,15 @@ const StockLegend = forwardRef<StockLegendRef, StockLegendProps>(({ symbol, meta
   const maLabelStyle = { color: UI_COLORS.textSecondary, fontSize: '11px' };
   const maValStyle = { fontFamily: '"Roboto Mono", monospace', fontSize: '11px', fontWeight: 500 };
 
+  const getFallbackLogo = () => (
+    <Box sx={{ 
+      width: 24, height: 24, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.1)', 
+      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: UI_COLORS.textSecondary 
+    }}>
+      {symbol.substring(0, 1)}
+    </Box>
+  );
+
   return (
     <Box sx={{
       display: 'flex', flexDirection: 'column', gap: 1, background: UI_COLORS.overlayBg,
@@ -66,9 +76,9 @@ const StockLegend = forwardRef<StockLegendRef, StockLegendProps>(({ symbol, meta
     }}>
       <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-          {metadata?.logo && (
-            <Box component="img" src={metadata.logo} sx={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'contain' }} />
-          )}
+          {metadata?.logo && !imgError ? (
+            <Box component="img" src={metadata.logo} onError={() => setImgError(true)} sx={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'contain' }} />
+          ) : getFallbackLogo()}
           <Box sx={{ display: 'flex', flexDirection: 'column' }}>
             <Typography sx={{ fontWeight: 600, fontSize: '14px', color: UI_COLORS.textPrimary, lineHeight: 1.2 }}>{metadata?.name || symbol}</Typography>
             <Typography sx={{ fontSize: '10px', color: UI_COLORS.textSecondary }}>{symbol}</Typography>

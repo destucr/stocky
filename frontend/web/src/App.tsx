@@ -94,6 +94,7 @@ function App() {
   const isAutoScaleRef = useRef(true);
   const lastRangeRef = useRef<{ from: number, to: number } | null>(null);
   
+  const [brokenLogos, setBrokenLogos] = useState<Record<string, boolean>>({});
   const legendRef = useRef<StockLegendRef>(null);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -953,15 +954,21 @@ function App() {
                         {availableSymbols.map((s) => {
                           const meta = symbolMetadata[s];
                           const exchange = s.split(':')[0];
+                          const isLogoBroken = brokenLogos[s];
+
                           return (
                             <MenuItem key={s} value={s} sx={{ py: 1, px: 1.5 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                      {meta?.logo ? (
-                                          <img src={meta.logo} style={{ width: 20, height: 20, borderRadius: '50%', filter: 'saturate(0.8)' }} />
+                                      {meta?.logo && !isLogoBroken ? (
+                                          <img 
+                                            src={meta.logo} 
+                                            onError={() => setBrokenLogos(prev => ({ ...prev, [s]: true }))}
+                                            style={{ width: 20, height: 20, borderRadius: '50%', filter: 'saturate(0.8)' }} 
+                                          />
                                       ) : (
                                           <Box sx={{ width: 20, height: 20, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                              <TimelineIcon sx={{ fontSize: 12, color: COLORS.textDisabled }} />
+                                              <Typography sx={{ fontSize: '10px', fontWeight: 700, color: COLORS.textSecondary }}>{s.substring(0, 1)}</Typography>
                                           </Box>
                                       )}
                                       <Box sx={{ display: 'flex', flexDirection: 'column' }}>

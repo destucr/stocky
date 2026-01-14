@@ -185,39 +185,38 @@ func main() {
 						"name": "Wormhole / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/36653/small/wormhole.png",
 					},
-					"ACCTRY": {
-						"name": "Ascent / TRY",
-						"logo": "https://www.google.com/s2/favicons?domain=ascent.com&sz=128",
-					},
-					"AAPL": {
-						"name": "Apple Inc.",
-						"logo": "https://www.google.com/s2/favicons?domain=apple.com&sz=128",
-					},
-					"MSFT": {
-						"name": "Microsoft Corporation",
-						"logo": "https://www.google.com/s2/favicons?domain=microsoft.com&sz=128",
-					},
-					"GOOGL": {
-						"name": "Alphabet Inc.",
-						"logo": "https://www.google.com/s2/favicons?domain=google.com&sz=128",
-					},
-					"AMZN": {
-						"name": "Amazon.com, Inc.",
-						"logo": "https://www.google.com/s2/favicons?domain=amazon.com&sz=128",
-					},
-					"TSLA": {
-						"name": "Tesla, Inc.",
-						"logo": "https://www.google.com/s2/favicons?domain=tesla.com&sz=128",
-					},
-					"NVDA": {
-						"name": "NVIDIA Corporation",
-						"logo": "https://www.google.com/s2/favicons?domain=nvidia.com&sz=128",
-					},
-					"META": {
-						"name": "Meta Platforms, Inc.",
-						"logo": "https://www.google.com/s2/favicons?domain=meta.com&sz=128",
-					},
-				}
+					                    "AAPL": {
+											"name": "Apple Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/apple--big.svg",
+										},
+										"MSFT": {
+											"name": "Microsoft Corporation",
+											"logo": "https://s3-symbol-logo.tradingview.com/microsoft--big.svg",
+										},
+										"GOOGL": {
+											"name": "Alphabet Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/google--big.svg",
+										},
+										"AMZN": {
+											"name": "Amazon.com, Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/amazon--big.svg",
+										},
+										"TSLA": {
+											"name": "Tesla, Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/tesla--big.svg",
+										},
+										"NVDA": {
+											"name": "NVIDIA Corporation",
+											"logo": "https://s3-symbol-logo.tradingview.com/nvidia--big.svg",
+										},
+										"META": {
+											"name": "Meta Platforms, Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/meta-platforms--big.svg",
+										},
+										"ACCTRY": {
+											"name": "Acreage Holdings",
+											"logo": "https://www.google.com/s2/favicons?domain=acreageholdings.com&sz=128",
+										},				}
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(metadata)
 			})
