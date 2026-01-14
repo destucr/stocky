@@ -358,7 +358,7 @@ function App() {
         const focusPrice = seriesRef.current.coordinateToPrice(e.clientY - rect.top);
         if (focusPrice === null) return;
 
-        const factor = Math.pow(1.0015, e.deltaY * (e.deltaMode === 1 ? 20 : 1));
+        const factor = Math.pow(1.0005, e.deltaY * (e.deltaMode === 1 ? 20 : 1));
         const newRangeSize = (range.to - range.from) * factor;
 
         if (newRangeSize < 0.001 || newRangeSize > 10000000) return;
@@ -764,44 +764,43 @@ function App() {
     }
   };
 
-  const handleZoomIn = () => {
-    const currentIndex = AVAILABLE_TIMEFRAMES.findIndex(tf => tf.value === timeframe);
-    if (currentIndex > 0) {
-      setTimeframe(AVAILABLE_TIMEFRAMES[currentIndex - 1].value);
-    } else if (chartRef.current) {
-      const timeScale = chartRef.current.timeScale();
-      const logicalRange = timeScale.getVisibleLogicalRange();
-      if (logicalRange) {
-        const span = logicalRange.to - logicalRange.from;
-        const center = (logicalRange.to + logicalRange.from) / 2;
-        const newSpan = span * 0.8; 
-        timeScale.setVisibleLogicalRange({
-          from: center - newSpan / 2,
-          to: center + newSpan / 2,
-        });
-      }
-    }
-  };
-
-  const handleZoomOut = () => {
-    const currentIndex = AVAILABLE_TIMEFRAMES.findIndex(tf => tf.value === timeframe);
-    if (currentIndex < AVAILABLE_TIMEFRAMES.length - 1) {
-      setTimeframe(AVAILABLE_TIMEFRAMES[currentIndex + 1].value);
-    } else if (chartRef.current) {
-      const timeScale = chartRef.current.timeScale();
-      const logicalRange = timeScale.getVisibleLogicalRange();
-      if (logicalRange) {
-        const span = logicalRange.to - logicalRange.from;
-        const center = (logicalRange.to + logicalRange.from) / 2;
-        const newSpan = span * 1.25; 
-        timeScale.setVisibleLogicalRange({
-          from: center - newSpan / 2,
-          to: center + newSpan / 2,
-        });
-      }
-    }
-  };
-
+      const handleZoomIn = () => {
+        const currentIndex = AVAILABLE_TIMEFRAMES.findIndex(tf => tf.value === timeframe);
+        if (currentIndex > 0) {
+          setTimeframe(AVAILABLE_TIMEFRAMES[currentIndex - 1].value);
+        } else if (chartRef.current) {
+          const timeScale = chartRef.current.timeScale();
+          const logicalRange = timeScale.getVisibleLogicalRange();
+          if (logicalRange) {
+            const span = logicalRange.to - logicalRange.from;
+            const center = (logicalRange.to + logicalRange.from) / 2;
+            const newSpan = span * 0.9; 
+            timeScale.setVisibleLogicalRange({
+              from: center - newSpan / 2,
+              to: center + newSpan / 2,
+            });
+          }
+        }
+      };
+  
+      const handleZoomOut = () => {
+        const currentIndex = AVAILABLE_TIMEFRAMES.findIndex(tf => tf.value === timeframe);
+        if (currentIndex < AVAILABLE_TIMEFRAMES.length - 1) {
+          setTimeframe(AVAILABLE_TIMEFRAMES[currentIndex + 1].value);
+        } else if (chartRef.current) {
+          const timeScale = chartRef.current.timeScale();
+          const logicalRange = timeScale.getVisibleLogicalRange();
+          if (logicalRange) {
+            const span = logicalRange.to - logicalRange.from;
+            const center = (logicalRange.to + logicalRange.from) / 2;
+            const newSpan = span * 1.1; 
+            timeScale.setVisibleLogicalRange({
+              from: center - newSpan / 2,
+              to: center + newSpan / 2,
+            });
+          }
+        }
+      };
   return (
     <ThemeProvider theme={theme}>
       <Box sx={{ flexGrow: 1, height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: COLORS.background, color: COLORS.textPrimary }}>
