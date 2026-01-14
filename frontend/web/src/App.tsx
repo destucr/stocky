@@ -173,11 +173,12 @@ function App() {
     });
   };
 
-  // Initialize Charts
-  useEffect(() => {
-    if (chartContainerRef.current && volumeContainerRef.current) {
-                      const commonOptions = {
-                        layout: {
+    // Initialize Charts
+    useEffect(() => {
+      if (chartContainerRef.current && volumeContainerRef.current) {
+        const unsubscribes: (() => void)[] = [];
+  
+        const commonOptions = {                        layout: {
                           background: { type: ColorType.Solid, color: COLORS.background },
                           textColor: COLORS.textSecondary,
                           // Eliminate internal library padding
@@ -240,7 +241,7 @@ function App() {
       const volumeTimeScale = volumeChart.timeScale();
 
       const sync = (src: any, target: any) => {
-        src.subscribeVisibleTimeRangeChange(() => {
+        const handler = () => {
           if (isSyncingRef.current) return;
           isSyncingRef.current = true;
           try {
@@ -253,11 +254,13 @@ function App() {
           } finally {
             isSyncingRef.current = false;
           }
-        });
+        };
+        src.subscribeVisibleTimeRangeChange(handler);
+        return () => src.unsubscribeVisibleTimeRangeChange(handler);
       };
 
-      sync(priceTimeScale, volumeTimeScale);
-      sync(volumeTimeScale, priceTimeScale);
+      unsubscribes.push(sync(priceTimeScale, volumeTimeScale));
+      unsubscribes.push(sync(volumeTimeScale, priceTimeScale));
 
       const candlestickSeries = priceChart.addCandlestickSeries({
         upColor: COLORS.success, 
@@ -325,10 +328,11 @@ function App() {
       };
 
       priceChart.subscribeCrosshairMove(handleCrosshair);
+      unsubscribes.push(() => priceChart.unsubscribeCrosshairMove(handleCrosshair));
 
       // --- Bidirectional Crosshair Sync ---
       const syncCrosshair = (sourceChart: IChartApi, targetChart: IChartApi, targetSeries: ISeriesApi<any>) => {
-        sourceChart.subscribeCrosshairMove((param) => {
+        const handler = (param: MouseEventParams) => {
           if (isSyncingRef.current) return;
           isSyncingRef.current = true;
           try {
@@ -342,12 +346,14 @@ function App() {
           } finally {
             isSyncingRef.current = false;
           }
-        });
+        };
+        sourceChart.subscribeCrosshairMove(handler);
+        return () => sourceChart.unsubscribeCrosshairMove(handler);
       };
 
       if (seriesRef.current && volumeSeriesRef.current) {
-        syncCrosshair(priceChart, volumeChart, volumeSeriesRef.current);
-        syncCrosshair(volumeChart, priceChart, seriesRef.current);
+        unsubscribes.push(syncCrosshair(priceChart, volumeChart, volumeSeriesRef.current));
+        unsubscribes.push(syncCrosshair(volumeChart, priceChart, seriesRef.current));
       }
 
       // --- Real-time Vertical Price Zoom Logic ---
@@ -457,19 +463,19 @@ function App() {
         }
       };
 
-      window.addEventListener('resize', handleResize);
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-        if (container) {
-            container.removeEventListener('wheel', handleWheel);
-            container.removeEventListener('mousedown', handleMouseDown);
-        }
-        priceChart.remove();
-        volumeChart.remove();
-      };
-    }
+              window.addEventListener('resize', handleResize);
+              return () => {
+                window.removeEventListener('resize', handleResize);
+                window.removeEventListener('mousemove', handleMouseMove);
+                window.removeEventListener('mouseup', handleMouseUp);
+                if (container) {
+                    container.removeEventListener('wheel', handleWheel);
+                    container.removeEventListener('mousedown', handleMouseDown);
+                }
+                unsubscribes.forEach(u => u());
+                priceChart.remove();
+                volumeChart.remove();
+              };    }
   }, []);
 
   // Handle Chart Type Change
