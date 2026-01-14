@@ -177,18 +177,20 @@ function App() {
   // Initialize Charts
   useEffect(() => {
     if (chartContainerRef.current && volumeContainerRef.current) {
-      const commonOptions = {
-        layout: {
-          background: { type: ColorType.Solid, color: COLORS.background },
-          textColor: COLORS.textSecondary,
-          // Eliminate internal library padding
-          padding: { top: 0, bottom: 0, left: 0, right: 0 },
-        },
-        grid: {
-          vertLines: { color: COLORS.border },
-          horzLines: { color: COLORS.border },
-        },
-        handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
+                      const commonOptions = {
+                        layout: {
+                          background: { type: ColorType.Solid, color: COLORS.background },
+                          textColor: COLORS.textSecondary,
+                          // Eliminate internal library padding
+                          padding: { top: 0, bottom: 0, left: 0, right: 0 },
+                          attributionLogo: false,
+                        },
+                        watermark: {
+                          visible: false,
+                        },                grid: {
+                  vertLines: { color: COLORS.border },
+                  horzLines: { color: COLORS.border },
+                },        handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
         handleScroll: { mouseWheel: false, pressedMouseMove: true },
       };
 
