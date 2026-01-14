@@ -171,13 +171,16 @@ func (s *PostgresStore) GetOHLCHistory(ctx context.Context, symbol string, inter
 		}
 		defer rows.Close()
 
+		tradeCandles := make([]Candle, 0, remaining)
 		for rows.Next() {
 			var c Candle
 			if err := rows.Scan(&c.Time, &c.Open, &c.High, &c.Low, &c.Close, &c.Volume); err != nil {
 				return nil, err
 			}
-			history = append(history, c)
+			tradeCandles = append(tradeCandles, c)
 		}
+		// Prepend newer trade-derived candles (DESC) before older persistent candles (DESC)
+		history = append(tradeCandles, history...)
 	}
 
 	// Reverse to get chronological order
