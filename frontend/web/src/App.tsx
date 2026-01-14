@@ -213,8 +213,8 @@ function App() {
           timeVisible: true,
           secondsVisible: true,
           borderColor: COLORS.borderLight,
-          shiftVisibleRangeOnNewBar: false, // Allow user to stay at historical data
-          rightOffset: 100, // Significant whitespace on the right
+          shiftVisibleRangeOnNewBar: true, // Auto-scroll to follow new data
+          rightOffset: 150, // Large buffer on the right
           barSpacing: 10,
         },
         rightPriceScale: {
@@ -314,7 +314,28 @@ function App() {
       };
 
       priceChart.subscribeCrosshairMove(handleCrosshair);
-      // Volume crosshair sync disabled to fix 'Value is null' error
+
+      // --- Bidirectional Crosshair Sync ---
+      let isSyncingCrosshair = false;
+      const syncCrosshair = (sourceChart: IChartApi, targetChart: IChartApi, targetSeries: ISeriesApi<any>) => {
+        sourceChart.subscribeCrosshairMove((param) => {
+          if (isSyncingCrosshair) return;
+          isSyncingCrosshair = true;
+          if (!param.time) {
+            targetChart.clearCrosshairPosition();
+          } else {
+            // We use a large price value to keep the horizontal line out of view 
+            // if we only want vertical sync, but here we just want to sync the time.
+            targetChart.setCrosshairPosition(0, param.time, targetSeries);
+          }
+          isSyncingCrosshair = false;
+        });
+      };
+
+      if (seriesRef.current && volumeSeriesRef.current) {
+        syncCrosshair(priceChart, volumeChart, volumeSeriesRef.current);
+        syncCrosshair(volumeChart, priceChart, seriesRef.current);
+      }
 
       // --- Real-time Vertical Price Zoom Logic ---
       const handleWheel = (e: WheelEvent) => {
