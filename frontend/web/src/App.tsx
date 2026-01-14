@@ -196,7 +196,12 @@ function App() {
         ...commonOptions,
         width: chartContainerRef.current.clientWidth,
         height: chartContainerRef.current.clientHeight || 400,
-        timeScale: { visible: false, borderVisible: false },
+        timeScale: { 
+            visible: false, 
+            borderVisible: false,
+            shiftVisibleRangeOnNewBar: true,
+            rightOffset: 150,
+        },
         rightPriceScale: { 
             borderColor: COLORS.borderLight, 
             autoScale: true, 
@@ -233,9 +238,9 @@ function App() {
           if (isSyncingRef.current) return;
           isSyncingRef.current = true;
           try {
-            const range = src.getVisibleRange();
-            if (range && range.from !== null && range.to !== null) {
-              target.setVisibleRange(range);
+            const logicalRange = src.getVisibleLogicalRange();
+            if (logicalRange) {
+              target.setVisibleLogicalRange(logicalRange);
             }
           } catch (err) {
             // Ignore sync errors during load
