@@ -109,12 +109,12 @@ func (s *PostgresStore) GetOHLCHistory(ctx context.Context, symbol string, inter
 	// Simple OHLC aggregation using array_agg for first/last
 	query := `
 		SELECT 
-			to_timestamp(floor(extract(epoch from timestamp) / $1) * $1) AS bucket,
-			(array_agg(price ORDER BY timestamp ASC))[1] AS open,
-			max(price) AS high,
-			min(price) AS low,
-			(array_agg(price ORDER BY timestamp DESC))[1] AS close,
-			sum(volume) AS volume
+			(to_timestamp(floor(extract(epoch from timestamp) / $1) * $1) AT TIME ZONE 'UTC')::timestamptz AS bucket,
+			COALESCE((array_agg(price ORDER BY timestamp ASC, id ASC))[1], 0.0)::DOUBLE PRECISION AS open,
+			COALESCE(max(price), 0.0)::DOUBLE PRECISION AS high,
+			COALESCE(min(price), 0.0)::DOUBLE PRECISION AS low,
+			COALESCE((array_agg(price ORDER BY timestamp DESC, id DESC))[1], 0.0)::DOUBLE PRECISION AS close,
+			COALESCE(sum(volume), 0.0)::DOUBLE PRECISION AS volume
 		FROM trades 
 		WHERE symbol = $2 
 		GROUP BY bucket 
@@ -123,17 +123,25 @@ func (s *PostgresStore) GetOHLCHistory(ctx context.Context, symbol string, inter
 
 	rows, err := s.pool.Query(ctx, query, intervalSeconds, symbol, limit)
 	if err != nil {
+		slog.Error("Failed to execute OHLC history query", "error", err, "symbol", symbol, "interval", intervalSeconds)
 		return nil, err
+	}
+	if rows == nil {
+		return []Candle{}, nil
 	}
 	defer rows.Close()
 
-	var history []Candle
+	history := make([]Candle, 0)
 	for rows.Next() {
 		var c Candle
 		if err := rows.Scan(&c.Time, &c.Open, &c.High, &c.Low, &c.Close, &c.Volume); err != nil {
 			return nil, err
 		}
 		history = append(history, c)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	// Reverse to get chronological order
