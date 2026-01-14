@@ -188,7 +188,12 @@ function App() {
           horzLines: { color: COLORS.border },
         },
         handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
-        handleScroll: { mouseWheel: true, pressedMouseMove: true },
+        handleScroll: { 
+            mouseWheel: true, 
+            pressedMouseMove: true,
+            horzTouchDrag: true,
+            vertTouchDrag: true,
+        },
       };
 
       // 1. Price Chart (Background Layer)
@@ -387,10 +392,62 @@ function App() {
         });
       };
 
+      // --- Vertical Panning Logic ---
+      let isPanning = false;
+      let panStartRange: any = null;
+      let panStartY = 0;
+
+      const handleMouseDown = (e: MouseEvent) => {
+        if (e.button !== 0 || !chartRef.current || !container) return;
+        const priceScale = chartRef.current.priceScale('right');
+        const options: any = priceScale.options();
+        panStartRange = options.priceRange || lastRangeRef.current;
+        if (!panStartRange) return;
+        
+        isPanning = true;
+        panStartY = e.clientY;
+      };
+
+      const handleMouseMove = (e: MouseEvent) => {
+        if (!isPanning || !panStartRange || !chartRef.current || !container) return;
+        
+        const deltaY = e.clientY - panStartY;
+        if (Math.abs(deltaY) < 1) return;
+
+        const chartHeight = container.clientHeight || 400;
+        const rangeHeight = panStartRange.to - panStartRange.from;
+        const priceDelta = (deltaY / chartHeight) * rangeHeight;
+
+        const newRange = {
+          from: panStartRange.from + priceDelta,
+          to: panStartRange.to + priceDelta,
+        };
+
+        chartRef.current.priceScale('right').applyOptions({
+          autoScale: false,
+          // @ts-ignore
+          priceRange: newRange,
+        });
+        
+        lastRangeRef.current = newRange;
+        if (isAutoScaleRef.current) {
+          isAutoScaleRef.current = false;
+          setTimeout(() => setIsAutoScale(false), 0);
+        }
+      };
+
+      const handleMouseUp = () => {
+        isPanning = false;
+        panStartRange = null;
+      };
+
       const container = chartContainerRef.current;
       if (container) {
         container.addEventListener('wheel', handleWheel, { passive: false });
+        container.addEventListener('mousedown', handleMouseDown);
       }
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
 
       const handleResize = () => {
         if (chartRef.current && volumeChartRef.current && chartContainerRef.current) {
@@ -402,7 +459,12 @@ function App() {
       window.addEventListener('resize', handleResize);
       return () => {
         window.removeEventListener('resize', handleResize);
-        if (container) container.removeEventListener('wheel', handleWheel);
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+        if (container) {
+            container.removeEventListener('wheel', handleWheel);
+            container.removeEventListener('mousedown', handleMouseDown);
+        }
         priceChart.remove();
         volumeChart.remove();
       };
