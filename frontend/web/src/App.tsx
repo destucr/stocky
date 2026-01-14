@@ -97,8 +97,6 @@ function App() {
   
   const [brokenLogos, setBrokenLogos] = useState<Record<string, boolean>>({});
   const legendRef = useRef<StockLegendRef>(null);
-  const pendingTradeRef = useRef<TradeData | null>(null);
-  const rafIdRef = useRef<number | null>(null);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const volumeContainerRef = useRef<HTMLDivElement>(null);
@@ -265,30 +263,42 @@ function App() {
       unsubscribes.push(sync(priceTimeScale, volumeTimeScale));
       unsubscribes.push(sync(volumeTimeScale, priceTimeScale));
 
-      const candlestickSeries = priceChart.addCandlestickSeries({
-        upColor: COLORS.success, 
-        downColor: COLORS.danger, 
-        borderVisible: false, 
-        wickUpColor: COLORS.success, 
-        wickDownColor: COLORS.danger, 
-        visible: chartType === 'candlestick',
-        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-      });
-
-      const lineSeries = priceChart.addLineSeries({
-        color: COLORS.accent,
-        lineWidth: 2,
-        visible: chartType === 'line',
-      });
-
-      const areaSeries = priceChart.addAreaSeries({
-        lineColor: COLORS.accent,
-        topColor: 'rgba(33, 150, 243, 0.4)',
-        bottomColor: 'rgba(33, 150, 243, 0.0)',
-        lineWidth: 2,
-        visible: chartType === 'area',
-      });
-
+              const candlestickSeries = priceChart.addCandlestickSeries({
+                upColor: COLORS.success, 
+                downColor: COLORS.danger, 
+                borderVisible: false, 
+                wickUpColor: COLORS.success, 
+                wickDownColor: COLORS.danger, 
+                visible: chartType === 'candlestick',
+                priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+                lastValueVisible: true,
+                priceLineVisible: true,
+                priceLineSource: 1, // LastVisible source
+                priceLineColor: COLORS.textPrimary,
+                priceLineWidth: 1,
+              });
+      
+              const lineSeries = priceChart.addLineSeries({
+                color: COLORS.accent,
+                lineWidth: 2,
+                visible: chartType === 'line',
+                lastValueVisible: true,
+                priceLineVisible: true,
+                priceLineColor: COLORS.accent,
+                priceLineWidth: 1,
+              });
+      
+              const areaSeries = priceChart.addAreaSeries({
+                lineColor: COLORS.accent,
+                topColor: 'rgba(33, 150, 243, 0.4)',
+                bottomColor: 'rgba(33, 150, 243, 0.0)',
+                lineWidth: 2,
+                visible: chartType === 'area',
+                lastValueVisible: true,
+                priceLineVisible: true,
+                priceLineColor: COLORS.accent,
+                priceLineWidth: 1,
+              });
       const volumeSeries = volumeChart.addHistogramSeries({
         color: COLORS.success,
         priceFormat: { type: 'volume' },
@@ -775,72 +785,63 @@ function App() {
   };
 
   const processTrade = (trade: TradeData) => {
-    pendingTradeRef.current = trade;
-    
-    if (rafIdRef.current === null) {
-      rafIdRef.current = requestAnimationFrame(() => {
-        rafIdRef.current = null;
-        const currentTrade = pendingTradeRef.current;
-        if (!currentTrade) return;
+    const tradeTime = Math.floor(trade.t / 1000);
+    const candleIntervalVal = intervalRef.current; 
+    const candleTime = Math.floor(tradeTime / candleIntervalVal) * candleIntervalVal;
 
-        const tradeTime = Math.floor(currentTrade.t / 1000);
-        const candleIntervalVal = intervalRef.current; 
-        const candleTime = Math.floor(tradeTime / candleIntervalVal) * candleIntervalVal;
+    if (candleTime < lastCandleTimeRef.current) return;
 
-        if (candleTime < lastCandleTimeRef.current) return;
+    const isNewCandle = !currentCandleRef.current || candleTime > lastCandleTimeRef.current;
 
-        const isNewCandle = !currentCandleRef.current || candleTime > lastCandleTimeRef.current;
-
-        if (isNewCandle) {
-          if (currentCandleRef.current) {
-            candleHistoryRef.current.push({ 
-                time: currentCandleRef.current.time, 
-                close: currentCandleRef.current.close 
-            });
-            if (candleHistoryRef.current.length > 500) candleHistoryRef.current.shift();
-          }
-
-          currentCandleRef.current = {
-            time: candleTime as Time,
-            open: currentTrade.p, high: currentTrade.p, low: currentTrade.p, close: currentTrade.p,
-            volume: currentTrade.v,
-          };
-          lastCandleTimeRef.current = candleTime;
-        } else {
-          const c = currentCandleRef.current!;
-          c.high = Math.max(c.high, currentTrade.p);
-          c.low = Math.min(c.low, currentTrade.p);
-          c.close = currentTrade.p;
-          c.volume += currentTrade.v;
-        }
-
-        const v7 = calculateLastMA(7, currentTrade.p);
-        const v25 = calculateLastMA(25, currentTrade.p);
-        const v99 = calculateLastMA(99, currentTrade.p);
-
-        const time = candleTime as Time;
-        const price = currentTrade.p;
-        
-        if (chartType === 'candlestick') {
-            seriesRef.current?.update(currentCandleRef.current!);
-        } else if (chartType === 'line') {
-            lineSeriesRef.current?.update({ time, value: price });
-        } else {
-            areaSeriesRef.current?.update({ time, value: price });
-        }
-
-        volumeSeriesRef.current?.update({
-            time, value: currentCandleRef.current!.volume,
-            color: currentCandleRef.current!.close >= currentCandleRef.current!.open ? COLORS.success : COLORS.danger
+    if (isNewCandle) {
+      if (currentCandleRef.current) {
+        candleHistoryRef.current.push({ 
+            time: currentCandleRef.current.time, 
+            close: currentCandleRef.current.close 
         });
+        if (candleHistoryRef.current.length > 1000) candleHistoryRef.current.shift();
+      }
 
-        if (v7 !== null) ma7SeriesRef.current?.update({ time, value: v7 });
-        if (v25 !== null) ma25SeriesRef.current?.update({ time, value: v25 });
-        if (v99 !== null) ma99SeriesRef.current?.update({ time, value: v99 });
-
-        updateLegendUI(currentCandleRef.current, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined);
-      });
+      currentCandleRef.current = {
+        time: candleTime as Time,
+        open: trade.p, high: trade.p, low: trade.p, close: trade.p,
+        volume: trade.v,
+      };
+      lastCandleTimeRef.current = candleTime;
+    } else {
+      const c = currentCandleRef.current!;
+      c.high = Math.max(c.high, trade.p);
+      c.low = Math.min(c.low, trade.p);
+      c.close = trade.p;
+      c.volume += trade.v;
     }
+
+    const v7 = calculateLastMA(7, trade.p);
+    const v25 = calculateLastMA(25, trade.p);
+    const v99 = calculateLastMA(99, trade.p);
+
+    const time = candleTime as Time;
+    const price = trade.p;
+    
+    // Instant Chart Update
+    if (chartType === 'candlestick') {
+        seriesRef.current?.update(currentCandleRef.current!);
+    } else if (chartType === 'line') {
+        lineSeriesRef.current?.update({ time, value: price });
+    } else {
+        areaSeriesRef.current?.update({ time, value: price });
+    }
+
+    volumeSeriesRef.current?.update({
+        time, value: currentCandleRef.current!.volume,
+        color: currentCandleRef.current!.close >= currentCandleRef.current!.open ? COLORS.success : COLORS.danger
+    });
+
+    if (v7 !== null) ma7SeriesRef.current?.update({ time, value: v7 });
+    if (v25 !== null) ma25SeriesRef.current?.update({ time, value: v25 });
+    if (v99 !== null) ma99SeriesRef.current?.update({ time, value: v99 });
+
+    updateLegendUI(currentCandleRef.current, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined);
   };
 
   const calculateLastMA = (period: number, currentPrice: number) => {
