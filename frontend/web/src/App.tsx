@@ -153,13 +153,15 @@ function App() {
     symbolMetadataRef.current = symbolMetadata;
     // If we already have a live candle, update the legend immediately to show the new logo/name
     if (currentCandleRef.current && activeSymbol) {
-        updateLegendUI(
-            currentCandleRef.current, 
-            activeSymbol,
-            ma7HistoryRef.current[ma7HistoryRef.current.length - 1]?.value,
-            ma25HistoryRef.current[ma25HistoryRef.current.length - 1]?.value,
-            ma99HistoryRef.current[ma99HistoryRef.current.length - 1]?.value
-        );
+        setTimeout(() => {
+            updateLegendUI(
+                currentCandleRef.current, 
+                activeSymbol,
+                ma7HistoryRef.current[ma7HistoryRef.current.length - 1]?.value,
+                ma25HistoryRef.current[ma25HistoryRef.current.length - 1]?.value,
+                ma99HistoryRef.current[ma99HistoryRef.current.length - 1]?.value
+            );
+        }, 50);
     }
   }, [symbolMetadata, activeSymbol]);
 
@@ -263,43 +265,44 @@ function App() {
       unsubscribes.push(sync(priceTimeScale, volumeTimeScale));
       unsubscribes.push(sync(volumeTimeScale, priceTimeScale));
 
-              const candlestickSeries = priceChart.addCandlestickSeries({
-                upColor: COLORS.success, 
-                downColor: COLORS.danger, 
-                borderVisible: false, 
-                wickUpColor: COLORS.success, 
-                wickDownColor: COLORS.danger, 
-                visible: chartType === 'candlestick',
-                priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-                lastValueVisible: true,
-                priceLineVisible: true,
-                priceLineSource: 1, // LastVisible source
-                priceLineColor: COLORS.textPrimary,
-                priceLineWidth: 1,
-              });
-      
-              const lineSeries = priceChart.addLineSeries({
-                color: COLORS.accent,
-                lineWidth: 2,
-                visible: chartType === 'line',
-                lastValueVisible: true,
-                priceLineVisible: true,
-                priceLineColor: COLORS.accent,
-                priceLineWidth: 1,
-              });
-      
-              const areaSeries = priceChart.addAreaSeries({
-                lineColor: COLORS.accent,
-                topColor: 'rgba(33, 150, 243, 0.4)',
-                bottomColor: 'rgba(33, 150, 243, 0.0)',
-                lineWidth: 2,
-                visible: chartType === 'area',
-                lastValueVisible: true,
-                priceLineVisible: true,
-                priceLineColor: COLORS.accent,
-                priceLineWidth: 1,
-              });
-      const volumeSeries = volumeChart.addHistogramSeries({
+                      const candlestickSeries = priceChart.addCandlestickSeries({
+                        upColor: COLORS.success, 
+                        downColor: COLORS.danger, 
+                        borderVisible: false, 
+                        wickUpColor: COLORS.success, 
+                        wickDownColor: COLORS.danger, 
+                        visible: chartType === 'candlestick',
+                        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+                        lastValueVisible: true,
+                        priceLineVisible: true,
+                        priceLineSource: 0, // LastBar source
+                        priceLineColor: COLORS.textPrimary,
+                        priceLineWidth: 1,
+                      });
+              
+                      const lineSeries = priceChart.addLineSeries({
+                        color: COLORS.accent,
+                        lineWidth: 2,
+                        visible: chartType === 'line',
+                        lastValueVisible: true,
+                        priceLineVisible: true,
+                        priceLineSource: 0,
+                        priceLineColor: COLORS.accent,
+                        priceLineWidth: 1,
+                      });
+              
+                      const areaSeries = priceChart.addAreaSeries({
+                        lineColor: COLORS.accent,
+                        topColor: 'rgba(33, 150, 243, 0.4)',
+                        bottomColor: 'rgba(33, 150, 243, 0.0)',
+                        lineWidth: 2,
+                        visible: chartType === 'area',
+                        lastValueVisible: true,
+                        priceLineVisible: true,
+                        priceLineSource: 0,
+                        priceLineColor: COLORS.accent,
+                        priceLineWidth: 1,
+                      });      const volumeSeries = volumeChart.addHistogramSeries({
         color: COLORS.success,
         priceFormat: { type: 'volume' },
       });
@@ -745,13 +748,17 @@ function App() {
           open: latestCandle.open, high: latestCandle.high, low: latestCandle.low, close: latestCandle.close,
           volume: latestCandle.volume
         };
-        updateLegendUI(
-            currentCandleRef.current, 
-            symbol,
-            ma7.length > 0 ? ma7[ma7.length - 1].value : undefined,
-            ma25.length > 0 ? ma25[ma25.length - 1].value : undefined,
-            ma99.length > 0 ? ma99[ma99.length - 1].value : undefined
-        );
+        
+        // Use a small timeout to ensure the legendRef is ready if this is the first load
+        setTimeout(() => {
+            updateLegendUI(
+                currentCandleRef.current, 
+                symbol,
+                ma7.length > 0 ? ma7[ma7.length - 1].value : undefined,
+                ma25.length > 0 ? ma25[ma25.length - 1].value : undefined,
+                ma99.length > 0 ? ma99[ma99.length - 1].value : undefined
+            );
+        }, 50);
 
         // Initialize lastRangeRef for zoom anchoring by calculating min/max from data
         if (candles.length > 0) {
