@@ -104,8 +104,6 @@ function App() {
   const volumeContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const volumeChartRef = useRef<IChartApi | null>(null);
-  const priceWrapperRef = useRef<HTMLDivElement>(null);
-  const mainScrollRef = useRef<HTMLDivElement>(null);
   const isSyncingRef = useRef(false);
   
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -319,30 +317,6 @@ function App() {
       priceChart.subscribeCrosshairMove(handleCrosshair);
       // Volume crosshair sync disabled to fix 'Value is null' error
 
-      // --- Sunset Occlusion Logic ---
-      const handleScroll = () => {
-        if (!mainScrollRef.current || !priceWrapperRef.current) return;
-        const scrollTop = mainScrollRef.current.scrollTop;
-        const threshold = 200; // Max scroll distance for full occlusion
-        const progress = Math.min(scrollTop / threshold, 1);
-        
-        requestAnimationFrame(() => {
-            if (priceWrapperRef.current) {
-                // Translate price chart downward
-                priceWrapperRef.current.style.transform = `translateY(${progress * 250}px)`;
-                // Occlusion: fade out as it enters the zone
-                priceWrapperRef.current.style.opacity = (1 - progress * 0.8).toString();
-                // Disable interactions when occluded
-                priceWrapperRef.current.style.pointerEvents = progress > 0.8 ? 'none' : 'auto';
-            }
-        });
-      };
-
-      const scrollContainer = mainScrollRef.current;
-      if (scrollContainer) {
-        scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-      }
-
       // --- Real-time Vertical Price Zoom Logic ---
       const handleWheel = (e: WheelEvent) => {
         if (!chartRef.current || !seriesRef.current || !container) return;
@@ -398,7 +372,6 @@ function App() {
       return () => {
         window.removeEventListener('resize', handleResize);
         if (container) container.removeEventListener('wheel', handleWheel);
-        if (scrollContainer) scrollContainer.removeEventListener('scroll', handleScroll);
         priceChart.remove();
         volumeChart.remove();
       };
