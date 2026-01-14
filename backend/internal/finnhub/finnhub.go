@@ -156,7 +156,7 @@ func (fc *FinnhubClient) listen() {
 	defer fc.conn.Close()
 	ctx := context.Background()
 	for {
-		_, message, err := fc.Conn.ReadMessage()
+		_, message, err := fc.conn.ReadMessage()
 		if err != nil {
 			slog.Error("Error reading from Finnhub WebSocket", "error", err)
 			return
