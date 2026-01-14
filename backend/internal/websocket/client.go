@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -16,8 +17,8 @@ const (
 )
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+	ReadBufferSize:  4096,
+	WriteBufferSize: 4096,
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
@@ -44,8 +45,20 @@ func (c *Client) WritePump() {
 				return
 			}
 
-			if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-				slog.Error("Failed to send message", "error", err)
+			w, err := c.Conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			// Add queued chat messages to the current websocket message.
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write([]byte("\n")) // Finnhub style frame separation
+				w.Write(<-c.send)
+			}
+
+			if err := w.Close(); err != nil {
 				return
 			}
 		case <-ticker.C:
@@ -86,6 +99,14 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		slog.Error("WebSocket upgrade failed", "error", err, "remote_addr", r.RemoteAddr)
 		return
 	}
+
+	// Disable Nagle's algorithm for instant packet transmission
+	if netConn := conn.UnderlyingConn(); netConn != nil {
+		if tcpConn, ok := netConn.(*net.TCPConn); ok {
+			tcpConn.SetNoDelay(true)
+		}
+	}
+
 	client := &Client{Hub: hub, Conn: conn, send: make(chan []byte, 1024)}
 	client.Hub.register <- client
 

@@ -80,7 +80,7 @@ func (fc *FinnhubClient) fetchAllAvailableSymbols() []string {
 	
 	hotSymbols := []string{
 		"BINANCE:BTCUSDT", "BINANCE:ETHUSDT", "BINANCE:SOLUSDT", 
-		"OANDA:EUR_USD", "OANDA:USD_JPY", "OANDA:GBP_USD",
+		"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META",
 	}
 	allSymbols = append(allSymbols, hotSymbols...)
 
@@ -107,7 +107,7 @@ func (fc *FinnhubClient) fetchAllAvailableSymbols() []string {
 
 	go func() {
 		defer wg.Done()
-		res, _, err := fc.sdk.ForexSymbols(ctx).Exchange("OANDA").Execute()
+		res, _, err := fc.sdk.StockSymbols(ctx).Exchange("US").Execute()
 		if err == nil {
 			mu.Lock()
 			for _, s := range res {
@@ -162,29 +162,26 @@ func (fc *FinnhubClient) listen() {
 			return
 		}
 
-		// Use a decoder to handle multiple JSON objects in a single message frame
+		// Direct broadcast of raw bytes to minimize marshaling latency
+		// We use a select with default to avoid blocking if the hub is busy
+		select {
+		case fc.Hub.Broadcast <- message:
+		default:
+			slog.Warn("Broadcast channel full, skipping message for realtime")
+		}
+
+		// Process for storage/memstore without blocking broadcast
 		reader := strings.NewReader(string(message))
 		decoder := json.NewDecoder(reader)
-		
 		for decoder.More() {
 			var fMsg FinnhubMessage
 			if err := decoder.Decode(&fMsg); err == nil {
-				fMsg.FetchedAt = time.Now().UnixMilli() // Record fetch time
 				if fMsg.Type == "trade" {
 					for _, trade := range fMsg.Data {
-						slog.Debug("Trade received", "symbol", trade.Symbol, "price", trade.Price)
 						fc.MemStore.UpdatePrice(trade.Symbol, trade.Price, trade.Time)
-						go fc.DBStore.SaveTrade(ctx, trade.Symbol, trade.Price, trade.Volume, trade.Time)
+						fc.DBStore.SaveTrade(ctx, trade.Symbol, trade.Price, trade.Volume, trade.Time)
 					}
 				}
-				
-				// Re-marshal each individual object to ensure valid single-JSON frames
-				if broadcastMsg, err := json.Marshal(fMsg); err == nil {
-					fc.Hub.Broadcast <- broadcastMsg
-				}
-			} else {
-				slog.Error("Failed to decode message part", "error", err)
-				break
 			}
 		}
 	}

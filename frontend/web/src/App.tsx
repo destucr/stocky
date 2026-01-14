@@ -21,11 +21,12 @@ import { ThemeProvider } from '@mui/material/styles';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time, PriceScaleMode, MouseEventParams } from 'lightweight-charts';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import theme, { UI_COLORS as COLORS } from './theme';
-import StockLegend from './components/StockLegend';
+import StockLegend, { StockLegendRef } from './components/StockLegend';
 
 // Types corresponding to backend
 interface TradeData {
@@ -39,7 +40,6 @@ interface BackendMessage {
   type: string;
   data: TradeData[];
   msg?: string;
-  fetched_at?: number; // Added for latency tracking
 }
 
 interface SymbolMetadata {
@@ -69,7 +69,7 @@ const calculateMA = (data: any[], period: number) => {
     return maData;
 };
 
-const AVAILABLE_TIMEFRAMES = [
+const AVAILABLE_INTERVALS = [
   { label: '1 Second', value: 1 },
   { label: '5 Seconds', value: 5 },
   { label: '10 Seconds', value: 10 },
@@ -85,21 +85,20 @@ function App() {
   const [symbolMetadata, setSymbolMetadata] = useState<Record<string, SymbolMetadata>>({});
   const symbolMetadataRef = useRef<Record<string, SymbolMetadata>>({});
   const [isConnected, setIsConnected] = useState(false);
-  const [chartType, setChartType] = useState<'candlestick' | 'line'>('candlestick');
+  const [chartType, setChartType] = useState<'candlestick' | 'line' | 'area'>('candlestick');
   const [isLogScale, setIsLogScale] = useState(false);
-  const [timeframe, setTimeframe] = useState<number>(60);
-  const timeframeRef = useRef(timeframe);
+  const [chartInterval, setChartInterval] = useState<number>(60);
+  const intervalRef = useRef(chartInterval);
   const lastSymbolRef = useRef<string>('');
   const [isAutoScale, setIsAutoScale] = useState(true);
   const lastPriceRef = useRef<number | null>(null);
+  const lastRealPriceRef = useRef<number | null>(null);
+  const lastTickColorRef = useRef<string>('');
   const isAutoScaleRef = useRef(true);
   const lastRangeRef = useRef<{ from: number, to: number } | null>(null);
   
-  // State for legend - replacement for innerHTML
-  const [legendData, setLegendData] = useState<{
-    candle: any;
-    mas: any;
-  }>({ candle: null, mas: {} });
+  const [brokenLogos, setBrokenLogos] = useState<Record<string, boolean>>({});
+  const legendRef = useRef<StockLegendRef>(null);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const volumeContainerRef = useRef<HTMLDivElement>(null);
@@ -109,6 +108,7 @@ function App() {
   
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const ma7SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const ma25SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -124,10 +124,10 @@ function App() {
   const ma25HistoryRef = useRef<any[]>([]);
   const ma99HistoryRef = useRef<any[]>([]);
 
-  // Sync timeframeRef
+  // Sync intervalRef
   useEffect(() => {
-    timeframeRef.current = timeframe;
-  }, [timeframe]);
+    intervalRef.current = chartInterval;
+  }, [chartInterval]);
 
   // Fetch metadata on mount
   useEffect(() => {
@@ -155,21 +155,24 @@ function App() {
     symbolMetadataRef.current = symbolMetadata;
     // If we already have a live candle, update the legend immediately to show the new logo/name
     if (currentCandleRef.current && activeSymbol) {
-        updateLegendUI(
-            currentCandleRef.current, 
-            activeSymbol,
-            ma7HistoryRef.current[ma7HistoryRef.current.length - 1]?.value,
-            ma25HistoryRef.current[ma25HistoryRef.current.length - 1]?.value,
-            ma99HistoryRef.current[ma99HistoryRef.current.length - 1]?.value
-        );
+        setTimeout(() => {
+            updateLegendUI(
+                currentCandleRef.current, 
+                activeSymbol,
+                ma7HistoryRef.current[ma7HistoryRef.current.length - 1]?.value,
+                ma25HistoryRef.current[ma25HistoryRef.current.length - 1]?.value,
+                ma99HistoryRef.current[ma99HistoryRef.current.length - 1]?.value
+            );
+        }, 50);
     }
   }, [symbolMetadata, activeSymbol]);
 
-  // Legend Updater - Now uses React state
-  const updateLegendUI = (candle: any, _symbol: string, ma7?: number, ma25?: number, ma99?: number) => {
-    setLegendData({
+  // Legend Updater - Now uses Ref for performance
+  const updateLegendUI = (candle: any, _symbol: string, ma7?: number, ma25?: number, ma99?: number, tickColor?: string) => {
+    legendRef.current?.update({
         candle,
-        mas: { ma7, ma25, ma99 }
+        mas: { ma7, ma25, ma99 },
+        tickColor
     });
   };
 
@@ -265,23 +268,44 @@ function App() {
       unsubscribes.push(sync(priceTimeScale, volumeTimeScale));
       unsubscribes.push(sync(volumeTimeScale, priceTimeScale));
 
-      const candlestickSeries = priceChart.addCandlestickSeries({
-        upColor: COLORS.success, 
-        downColor: COLORS.danger, 
-        borderVisible: false, 
-        wickUpColor: COLORS.success, 
-        wickDownColor: COLORS.danger, 
-        visible: chartType === 'candlestick',
-        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
-      });
-
-      const lineSeries = priceChart.addLineSeries({
-        color: COLORS.accent,
-        lineWidth: 2,
-        visible: chartType === 'line',
-      });
-
-      const volumeSeries = volumeChart.addHistogramSeries({
+                      const candlestickSeries = priceChart.addCandlestickSeries({
+                        upColor: COLORS.success, 
+                        downColor: COLORS.danger, 
+                        borderVisible: false, 
+                        wickUpColor: COLORS.success, 
+                        wickDownColor: COLORS.danger, 
+                        visible: chartType === 'candlestick',
+                        priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+                        lastValueVisible: true,
+                        priceLineVisible: true,
+                        priceLineSource: 0, // LastBar source
+                        priceLineColor: COLORS.textPrimary,
+                        priceLineWidth: 1,
+                      });
+              
+                      const lineSeries = priceChart.addLineSeries({
+                        color: COLORS.accent,
+                        lineWidth: 2,
+                        visible: chartType === 'line',
+                        lastValueVisible: true,
+                        priceLineVisible: true,
+                        priceLineSource: 0,
+                        priceLineColor: COLORS.accent,
+                        priceLineWidth: 1,
+                      });
+              
+                      const areaSeries = priceChart.addAreaSeries({
+                        lineColor: COLORS.accent,
+                        topColor: 'rgba(33, 150, 243, 0.4)',
+                        bottomColor: 'rgba(33, 150, 243, 0.0)',
+                        lineWidth: 2,
+                        visible: chartType === 'area',
+                        lastValueVisible: true,
+                        priceLineVisible: true,
+                        priceLineSource: 0,
+                        priceLineColor: COLORS.accent,
+                        priceLineWidth: 1,
+                      });      const volumeSeries = volumeChart.addHistogramSeries({
         color: COLORS.success,
         priceFormat: { type: 'volume' },
       });
@@ -294,6 +318,7 @@ function App() {
       volumeChartRef.current = volumeChart;
       seriesRef.current = candlestickSeries;
       lineSeriesRef.current = lineSeries;
+      areaSeriesRef.current = areaSeries;
       volumeSeriesRef.current = volumeSeries;
       ma7SeriesRef.current = m7;
       ma25SeriesRef.current = m25;
@@ -483,9 +508,10 @@ function App() {
 
   // Handle Chart Type Change
   useEffect(() => {
-    if (seriesRef.current && lineSeriesRef.current) {
+    if (seriesRef.current && lineSeriesRef.current && areaSeriesRef.current) {
       seriesRef.current.applyOptions({ visible: chartType === 'candlestick' });
       lineSeriesRef.current.applyOptions({ visible: chartType === 'line' });
+      areaSeriesRef.current.applyOptions({ visible: chartType === 'area' });
     }
   }, [chartType]);
 
@@ -536,20 +562,32 @@ function App() {
       ws.onmessage = (event) => {
         if (!isComponentMounted) return;
         try {
-          const message: BackendMessage = JSON.parse(event.data);
-          if (message.type === 'trade') {
-            const receivedSymbols = new Set(message.data.map(t => t.s));
-            setAvailableSymbols(prev => {
-              const newSymbols = Array.from(receivedSymbols).filter(s => !prev.includes(s));
-              return newSymbols.length > 0 ? [...prev, ...newSymbols].sort() : prev;
-            });
+          // Finnhub sometimes sends multiple JSON objects in one frame separated by newlines
+          const raw = event.data.toString();
+          const parts = raw.split('\n').filter((p: string) => p.trim().length > 0);
 
-            message.data.forEach(trade => {
-              if (activeSymbolRef.current && trade.s === activeSymbolRef.current) {
-                processTrade(trade, message.fetched_at);
-              }
-            });
-          }
+          parts.forEach((jsonStr: string) => {
+            try {
+              const message: BackendMessage = JSON.parse(jsonStr);
+              if (message.type === 'trade') {
+                const receivedSymbols = new Set(message.data.map(t => t.s));
+                setAvailableSymbols(prev => {
+                  const newSymbols = Array.from(receivedSymbols).filter(s => !prev.includes(s));
+                  return newSymbols.length > 0 ? [...prev, ...newSymbols].sort() : prev;
+                });
+
+                            // Process all trades in the message but only update chart for the active symbol once
+                            const trades = message.data.filter(t => t.s === activeSymbolRef.current);
+                            if (trades.length > 0) {
+                                // 1. Process all trade data first (CPU only)
+                                trades.forEach(trade => processTrade(trade));
+                                // 2. Draw the final state once (Heavy DOM/Canvas work)
+                                drawChartUpdate(trades[trades.length - 1].p);
+                            }              }
+            } catch (innerErr) {
+              console.error("Single frame parse error:", innerErr, "Raw string:", jsonStr);
+            }
+          });
         } catch (err) { console.error("WS Error:", err); }
       };
     };
@@ -572,42 +610,41 @@ function App() {
     }
   }, [availableSymbols, activeSymbol]);
 
-  useEffect(() => {
-    // Reset building state when symbol or timeframe changes
-    currentCandleRef.current = null;
-    lastCandleTimeRef.current = 0;
-    candleHistoryRef.current = [];
-    ma7HistoryRef.current = [];
-    ma25HistoryRef.current = [];
-    ma99HistoryRef.current = [];
-
-    // Restore auto-scale on changes
-    if (chartRef.current) {
-        chartRef.current.priceScale('right').applyOptions({ autoScale: true });
-        setIsAutoScale(true);
-        isAutoScaleRef.current = true;
-    }
-
-    // If symbol changed, we MUST clear everything immediately to avoid mixing symbols
-    if (activeSymbol && activeSymbol !== lastSymbolRef.current) {
-      if (seriesRef.current) {
-        seriesRef.current.setData([]);
-        lineSeriesRef.current?.setData([]);
-        volumeSeriesRef.current?.setData([]);
-        ma7SeriesRef.current?.setData([]);
-        ma25SeriesRef.current?.setData([]);
-        ma99SeriesRef.current?.setData([]);
-      }
-      lastSymbolRef.current = activeSymbol;
-    }
-
-    // Always fetch new history for the selected timeframe
-    if (activeSymbol) {
-      fetchHistory(activeSymbol, timeframe);
-    }
-  }, [activeSymbol, timeframe]);
-
-  const handleResetScale = () => {
+      useEffect(() => {
+        // Reset building state when symbol or interval changes
+        currentCandleRef.current = null;
+        lastCandleTimeRef.current = 0;
+        candleHistoryRef.current = [];
+        ma7HistoryRef.current = [];
+        ma25HistoryRef.current = [];
+        ma99HistoryRef.current = [];
+    
+        // Restore auto-scale on changes
+        if (chartRef.current) {
+            chartRef.current.priceScale('right').applyOptions({ autoScale: true });
+            setIsAutoScale(true);
+            isAutoScaleRef.current = true;
+        }
+    
+        // If symbol changed, we MUST clear everything immediately to avoid mixing symbols
+        if (activeSymbol && activeSymbol !== lastSymbolRef.current) {
+          if (seriesRef.current) {
+            seriesRef.current.setData([]);
+            lineSeriesRef.current?.setData([]);
+            areaSeriesRef.current?.setData([]);
+            volumeSeriesRef.current?.setData([]);
+            ma7SeriesRef.current?.setData([]);
+            ma25SeriesRef.current?.setData([]);
+            ma99SeriesRef.current?.setData([]);
+          }
+          lastSymbolRef.current = activeSymbol;
+        }
+    
+            // Always fetch new history for the selected interval
+            if (activeSymbol) {
+              fetchHistory(activeSymbol, chartInterval);
+            }
+          }, [activeSymbol, chartInterval]);  const handleResetScale = () => {
     if (chartRef.current) {
       const priceScale = chartRef.current.priceScale('right');
       priceScale.applyOptions({ 
@@ -621,11 +658,10 @@ function App() {
     }
   };
 
-  const fetchHistory = async (symbol: string, interval: number) => {
-    try {
-      // Request more candles for smaller timeframes to keep the chart full
-      let limit = 500;
-      if (interval <= 1) limit = 2000;
+      const fetchHistory = async (symbol: string, interval: number) => {
+        try {
+          // Request more candles for smaller intervals to keep the chart full
+          let limit = 500;      if (interval <= 1) limit = 2000;
       else if (interval <= 10) limit = 1000;
       else if (interval <= 60) limit = 500;
 
@@ -678,7 +714,8 @@ function App() {
         // We set candleHistoryRef to all candles EXCEPT the last one, 
         // because the last one is stored in currentCandleRef and will be 
         // pushed to history only when it is finalized (i.e., when a new candle starts).
-        candleHistoryRef.current = candles.slice(0, -1);
+        const historyData = candles.slice(0, -1);
+        candleHistoryRef.current = historyData;
         
         const ma7 = calculateMA(candles, 7);
         const ma25 = calculateMA(candles, 25);
@@ -694,6 +731,7 @@ function App() {
             // Update series with new resolution
             seriesRef.current?.setData(candles);
             lineSeriesRef.current?.setData(lineData);
+            areaSeriesRef.current?.setData(lineData);
             volumeSeriesRef.current?.setData(volumeData);
             ma7SeriesRef.current?.setData(ma7);
             ma25SeriesRef.current?.setData(ma25);
@@ -716,13 +754,9 @@ function App() {
           open: latestCandle.open, high: latestCandle.high, low: latestCandle.low, close: latestCandle.close,
           volume: latestCandle.volume
         };
-        updateLegendUI(
-            currentCandleRef.current, 
-            symbol,
-            ma7.length > 0 ? ma7[ma7.length - 1].value : undefined,
-            ma25.length > 0 ? ma25[ma25.length - 1].value : undefined,
-            ma99.length > 0 ? ma99[ma99.length - 1].value : undefined
-        );
+        
+        // Immediate UI sync
+        drawChartUpdate(latestCandle.close);
 
         // Initialize lastRangeRef for zoom anchoring by calculating min/max from data
         if (candles.length > 0) {
@@ -755,114 +789,108 @@ function App() {
     } catch (err) { console.error("History Error:", err); }
   };
 
-  const processTrade = (trade: TradeData, fetchedAt?: number) => {
+  const processTrade = (trade: TradeData) => {
+    // This is now just a data processor
     const tradeTime = Math.floor(trade.t / 1000);
-    const candleInterval = timeframeRef.current; 
-    const candleTime = Math.floor(tradeTime / candleInterval) * candleInterval;
+    const candleIntervalVal = intervalRef.current; 
+    const candleTime = Math.floor(tradeTime / candleIntervalVal) * candleIntervalVal;
 
-    // Prevent updates for data older than what we already have, as lightweight-charts 
-    // requires strictly increasing or equal timestamps for update().
-    if (candleTime < lastCandleTimeRef.current) {
-        return;
-    }
+    if (candleTime < lastCandleTimeRef.current) return;
 
-    const updateMAs = (currentClose: number, time: Time, isNewCandle: boolean) => {
-        // We use a copy of candle history + the current active candle to calculate MAs
-        const history = [...candleHistoryRef.current];
-        
-        // For the purpose of calculation, we append the "live" candle to history
-        const virtualHistory = [...history, { time, close: currentClose }];
-        
-        const calcLastMA = (period: number) => {
-            if (virtualHistory.length < period) return null;
-            let sum = 0;
-            for (let i = 0; i < period; i++) {
-                sum += virtualHistory[virtualHistory.length - 1 - i].close;
-            }
-            return sum / period;
-        };
+    const isNewCandle = !currentCandleRef.current || candleTime > lastCandleTimeRef.current;
 
-        const v7 = calcLastMA(7);
-        const v25 = calcLastMA(25);
-        const v99 = calcLastMA(99);
-
-        if (v7 !== null) {
-            ma7SeriesRef.current?.update({ time, value: v7 });
-            if (isNewCandle) ma7HistoryRef.current.push({ time, value: v7 });
-        }
-        if (v25 !== null) {
-            ma25SeriesRef.current?.update({ time, value: v25 });
-            if (isNewCandle) ma25HistoryRef.current.push({ time, value: v25 });
-        }
-        if (v99 !== null) {
-            ma99SeriesRef.current?.update({ time, value: v99 });
-            if (isNewCandle) ma99HistoryRef.current.push({ time, value: v99 });
-        }
-
-        return { v7, v25, v99 };
-    };
-
-    let mas = { v7: null as any, v25: null as any, v99: null as any };
-
-    if (!currentCandleRef.current || candleTime > lastCandleTimeRef.current) {
-      // Finalize the previous candle if it existed
+    if (isNewCandle) {
       if (currentCandleRef.current) {
         candleHistoryRef.current.push({ 
             time: currentCandleRef.current.time, 
             close: currentCandleRef.current.close 
         });
+        if (candleHistoryRef.current.length > 1000) candleHistoryRef.current.shift();
       }
 
-      const newCandle = {
+      currentCandleRef.current = {
         time: candleTime as Time,
         open: trade.p, high: trade.p, low: trade.p, close: trade.p,
         volume: trade.v,
       };
-      currentCandleRef.current = newCandle;
       lastCandleTimeRef.current = candleTime;
-      seriesRef.current?.update(newCandle);
-      lineSeriesRef.current?.update({ time: candleTime as Time, value: trade.p });
-      
-      volumeSeriesRef.current?.update({ 
-          time: candleTime as Time, 
-          value: trade.v, 
-          color: COLORS.success 
-      });
-      
-      mas = updateMAs(trade.p, candleTime as Time, true);
-
-    } else if (candleTime === lastCandleTimeRef.current) {
-      const c = currentCandleRef.current;
+    } else {
+      const c = currentCandleRef.current!;
       c.high = Math.max(c.high, trade.p);
       c.low = Math.min(c.low, trade.p);
       c.close = trade.p;
       c.volume += trade.v;
-      c.time = lastCandleTimeRef.current as Time;
-      
-      seriesRef.current?.update(c);
-      lineSeriesRef.current?.update({ time: c.time, value: trade.p });
-      
-      volumeSeriesRef.current?.update({
-        time: c.time, value: c.volume,
-        color: c.close >= c.open ? COLORS.success : COLORS.danger
-      });
-
-      mas = updateMAs(trade.p, c.time, false);
-    }
-    updateLegendUI(currentCandleRef.current, activeSymbolRef.current, mas.v7, mas.v25, mas.v99);
-
-    if (fetchedAt) {
-        const latency = Date.now() - fetchedAt;
-        if (Math.random() < 0.05) {
-            console.log(`[Latency] ${latency}ms from backend fetch to chart draw`);
-        }
     }
   };
 
+  const drawChartUpdate = (lastPrice: number) => {
+    if (!currentCandleRef.current) return;
+    
+    const candle = currentCandleRef.current;
+    const time = candle.time;
+    
+    // Calculate color once
+    let tickColor = COLORS.textPrimary;
+    if (lastRealPriceRef.current !== null) {
+        if (lastPrice > lastRealPriceRef.current) tickColor = COLORS.success;
+        else if (lastPrice < lastRealPriceRef.current) tickColor = COLORS.danger;
+    }
+    lastRealPriceRef.current = lastPrice;
+
+    // Update only what's visible
+    if (chartType === 'candlestick') {
+        seriesRef.current?.update(candle);
+        // Only apply options if color changed to avoid heavy chart re-calculates
+        if (tickColor !== lastTickColorRef.current) {
+            seriesRef.current?.applyOptions({ priceLineColor: tickColor });
+            lastTickColorRef.current = tickColor;
+        }
+    } else if (chartType === 'line') {
+        lineSeriesRef.current?.update({ time, value: lastPrice });
+        if (tickColor !== lastTickColorRef.current) {
+            lineSeriesRef.current?.applyOptions({ priceLineColor: tickColor });
+            lastTickColorRef.current = tickColor;
+        }
+    } else {
+        areaSeriesRef.current?.update({ time, value: lastPrice });
+        if (tickColor !== lastTickColorRef.current) {
+            areaSeriesRef.current?.applyOptions({ priceLineColor: tickColor });
+            lastTickColorRef.current = tickColor;
+        }
+    }
+
+    volumeSeriesRef.current?.update({
+        time, value: candle.volume,
+        color: candle.close >= candle.open ? COLORS.success : COLORS.danger
+    });
+
+    const v7 = calculateLastMA(7, lastPrice);
+    const v25 = calculateLastMA(25, lastPrice);
+    const v99 = calculateLastMA(99, lastPrice);
+
+    if (v7 !== null) ma7SeriesRef.current?.update({ time, value: v7 });
+    if (v25 !== null) ma25SeriesRef.current?.update({ time, value: v25 });
+    if (v99 !== null) ma99SeriesRef.current?.update({ time, value: v99 });
+
+    updateLegendUI(candle, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined, tickColor);
+  };
+
+  const calculateLastMA = (period: number, currentPrice: number) => {
+      const hist = candleHistoryRef.current;
+      const len = hist.length;
+      if (len + 1 < period) return null;
+      
+      let sum = currentPrice;
+      for (let i = 0; i < period - 1; i++) {
+          sum += hist[len - 1 - i].close;
+      }
+      return sum / period;
+  };
+
       const handleZoomIn = () => {
-        const currentIndex = AVAILABLE_TIMEFRAMES.findIndex(tf => tf.value === timeframe);
+        const currentIndex = AVAILABLE_INTERVALS.findIndex(tf => tf.value === chartInterval);
         if (currentIndex > 0) {
-          setTimeframe(AVAILABLE_TIMEFRAMES[currentIndex - 1].value);
+          setChartInterval(AVAILABLE_INTERVALS[currentIndex - 1].value);
         } else if (chartRef.current) {
           const timeScale = chartRef.current.timeScale();
           const logicalRange = timeScale.getVisibleLogicalRange();
@@ -879,9 +907,9 @@ function App() {
       };
   
       const handleZoomOut = () => {
-        const currentIndex = AVAILABLE_TIMEFRAMES.findIndex(tf => tf.value === timeframe);
-        if (currentIndex < AVAILABLE_TIMEFRAMES.length - 1) {
-          setTimeframe(AVAILABLE_TIMEFRAMES[currentIndex + 1].value);
+        const currentIndex = AVAILABLE_INTERVALS.findIndex(tf => tf.value === chartInterval);
+        if (currentIndex < AVAILABLE_INTERVALS.length - 1) {
+          setChartInterval(AVAILABLE_INTERVALS[currentIndex + 1].value);
         } else if (chartRef.current) {
           const timeScale = chartRef.current.timeScale();
           const logicalRange = timeScale.getVisibleLogicalRange();
@@ -958,15 +986,21 @@ function App() {
                         {availableSymbols.map((s) => {
                           const meta = symbolMetadata[s];
                           const exchange = s.split(':')[0];
+                          const isLogoBroken = brokenLogos[s];
+
                           return (
                             <MenuItem key={s} value={s} sx={{ py: 1, px: 1.5 }}>
                               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                      {meta?.logo ? (
-                                          <img src={meta.logo} style={{ width: 20, height: 20, borderRadius: '50%', filter: 'saturate(0.8)' }} />
+                                      {meta?.logo && !isLogoBroken ? (
+                                          <img 
+                                            src={meta.logo} 
+                                            onError={() => setBrokenLogos(prev => ({ ...prev, [s]: true }))}
+                                            style={{ width: 20, height: 20, borderRadius: '50%', filter: 'saturate(0.8)' }} 
+                                          />
                                       ) : (
                                           <Box sx={{ width: 20, height: 20, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                              <TimelineIcon sx={{ fontSize: 12, color: COLORS.textDisabled }} />
+                                              <Typography sx={{ fontSize: '10px', fontWeight: 700, color: COLORS.textSecondary }}>{s.substring(0, 1)}</Typography>
                                           </Box>
                                       )}
                                       <Box sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -998,15 +1032,15 @@ function App() {
                   </FormControl>
                   
                   <FormControl variant="outlined" size="small" sx={{ minWidth: 120 }}>
-                      <InputLabel id="timeframe-select-label" sx={{ color: COLORS.textSecondary, fontSize: '0.85rem' }}>Timeframe</InputLabel>
+                      <InputLabel id="interval-select-label" sx={{ color: COLORS.textSecondary, fontSize: '0.85rem' }}>Interval</InputLabel>
                       <Select
-                        labelId="timeframe-select-label"
-                        value={timeframe}
-                        label="Timeframe"
-                        onChange={(e) => setTimeframe(Number(e.target.value))}
+                        labelId="interval-select-label"
+                        value={chartInterval}
+                        label="Interval"
+                        onChange={(e) => setChartInterval(Number(e.target.value))}
                         sx={{ color: COLORS.textPrimary, fontSize: '0.85rem', '.MuiOutlinedInput-notchedOutline': { borderColor: COLORS.borderLight } }}
                       >
-                        {AVAILABLE_TIMEFRAMES.map((tf) => (
+                        {AVAILABLE_INTERVALS.map((tf) => (
                           <MenuItem key={tf.value} value={tf.value} sx={{ fontSize: '0.85rem' }}>{tf.label}</MenuItem>
                         ))}
                       </Select>
@@ -1028,6 +1062,11 @@ function App() {
                     <Tooltip title="Line Chart">
                       <ToggleButton value="line" sx={{ border: 'none', color: COLORS.textSecondary, '&.Mui-selected': { color: COLORS.accent, bgcolor: COLORS.borderLight } }}>
                         <TimelineIcon fontSize="small" />
+                      </ToggleButton>
+                    </Tooltip>
+                    <Tooltip title="Area Chart">
+                      <ToggleButton value="area" sx={{ border: 'none', color: COLORS.textSecondary, '&.Mui-selected': { color: COLORS.accent, bgcolor: COLORS.borderLight } }}>
+                        <ShowChartIcon fontSize="small" />
                       </ToggleButton>
                     </Tooltip>
                   </ToggleButtonGroup>
@@ -1108,10 +1147,9 @@ function App() {
                     {/* Legend Overlay */}
                     <Box sx={{ position: 'absolute', top: 12, left: 12, zIndex: 10 }}>
                       <StockLegend 
+                        ref={legendRef}
                         symbol={activeSymbol}
                         metadata={symbolMetadata[activeSymbol]}
-                        candle={legendData.candle}
-                        mas={legendData.mas}
                       />
                     </Box>
                     <Box ref={chartContainerRef} sx={{ width: '100%', height: '100%' }} />

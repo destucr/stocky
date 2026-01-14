@@ -58,6 +58,31 @@ func main() {
 	fc := finnhub.NewFinnhubClient(hub, memStore, dbStore, cfg.FinnhubAPIKey)
 	go fc.Connect()
 
+	// Background Task: Archive to permanent candles then prune raw trades
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			
+			// 1. Archive everything from trades into permanent 1m candles
+			if err := dbStore.ArchiveTradesToCandles(ctx, 60); err != nil {
+				slog.Error("Failed to archive trades to candles", "error", err)
+			} else {
+				slog.Debug("Successfully archived trades to permanent candles")
+			}
+
+			// 2. Prune raw trades older than 24 hours (we have the candles now!)
+			rows, err := dbStore.CleanupOldTrades(ctx, 24*time.Hour)
+			cancel()
+			if err != nil {
+				slog.Error("Database pruning failed", "error", err)
+			} else if rows > 0 {
+				slog.Info("Database pruning successful", "rows_deleted", rows)
+			}
+		}
+	}()
+
 	// Initialize Router
 	mux := http.NewServeMux()
 
@@ -80,7 +105,19 @@ func main() {
 						"name": "Bitcoin / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
 					},
+					"BTCUSDT": {
+						"name": "Bitcoin / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+					},
+					"BTC/USDT": {
+						"name": "Bitcoin / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+					},
 					"BINANCE:ETHUSDT": {
+						"name": "Ethereum / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
+					},
+					"ETHUSDT": {
 						"name": "Ethereum / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
 					},
@@ -88,7 +125,15 @@ func main() {
 						"name": "Solana / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/4128/small/solana.png",
 					},
+					"SOLUSDT": {
+						"name": "Solana / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/4128/small/solana.png",
+					},
 					"BINANCE:BNBUSDT": {
+						"name": "BNB / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/825/small/bnb.png",
+					},
+					"BNBUSDT": {
 						"name": "BNB / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/825/small/bnb.png",
 					},
@@ -96,7 +141,15 @@ func main() {
 						"name": "Cardano / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/975/small/cardano.png",
 					},
+					"ADAUSDT": {
+						"name": "Cardano / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/975/small/cardano.png",
+					},
 					"BINANCE:XRPUSDT": {
+						"name": "XRP / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/44/small/xrp.png",
+					},
+					"XRPUSDT": {
 						"name": "XRP / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/44/small/xrp.png",
 					},
@@ -104,31 +157,66 @@ func main() {
 						"name": "Polkadot / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
 					},
-					"OANDA:EUR_USD": {
-						"name": "Euro / US Dollar",
-						"logo": "https://flagcdn.com/w80/eu.png",
+					"DOTUSDT": {
+						"name": "Polkadot / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
 					},
-					"OANDA:GBP_USD": {
-						"name": "British Pound / US Dollar",
-						"logo": "https://flagcdn.com/w80/gb.png",
+					"BINANCE:BTCUSDC": {
+						"name": "Bitcoin / USDC",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
 					},
-					"OANDA:USD_JPY": {
-						"name": "US Dollar / Japanese Yen",
-						"logo": "https://flagcdn.com/w80/jp.png",
+					"BTCUSDC": {
+						"name": "Bitcoin / USDC",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
 					},
-					"OANDA:AUD_USD": {
-						"name": "Australian Dollar / US Dollar",
-						"logo": "https://flagcdn.com/w80/au.png",
+					"BINANCE:THEUSDT": {
+						"name": "Thena / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/28373/small/thena.png",
 					},
-					"OANDA:USD_CAD": {
-						"name": "US Dollar / Canadian Dollar",
-						"logo": "https://flagcdn.com/w80/ca.png",
+					"THEUSDT": {
+						"name": "Thena / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/28373/small/thena.png",
 					},
-					"OANDA:USD_CHF": {
-						"name": "US Dollar / Swiss Franc",
-						"logo": "https://flagcdn.com/w80/ch.png",
+					"BINANCE:WUSDT": {
+						"name": "Wormhole / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/36653/small/wormhole.png",
 					},
-				}
+					"WUSDT": {
+						"name": "Wormhole / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/36653/small/wormhole.png",
+					},
+					                    "AAPL": {
+											"name": "Apple Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/apple--big.svg",
+										},
+										"MSFT": {
+											"name": "Microsoft Corporation",
+											"logo": "https://s3-symbol-logo.tradingview.com/microsoft--big.svg",
+										},
+										"GOOGL": {
+											"name": "Alphabet Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/google--big.svg",
+										},
+										"AMZN": {
+											"name": "Amazon.com, Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/amazon--big.svg",
+										},
+										"TSLA": {
+											"name": "Tesla, Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/tesla--big.svg",
+										},
+										"NVDA": {
+											"name": "NVIDIA Corporation",
+											"logo": "https://s3-symbol-logo.tradingview.com/nvidia--big.svg",
+										},
+										"META": {
+											"name": "Meta Platforms, Inc.",
+											"logo": "https://s3-symbol-logo.tradingview.com/meta-platforms--big.svg",
+										},
+										"ACCTRY": {
+											"name": "Acreage Holdings",
+											"logo": "https://www.google.com/s2/favicons?domain=acreageholdings.com&sz=128",
+										},				}
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(metadata)
 			})
