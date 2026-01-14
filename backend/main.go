@@ -105,7 +105,19 @@ func main() {
 						"name": "Bitcoin / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
 					},
+					"BTCUSDT": {
+						"name": "Bitcoin / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+					},
+					"BTC/USDT": {
+						"name": "Bitcoin / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+					},
 					"BINANCE:ETHUSDT": {
+						"name": "Ethereum / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
+					},
+					"ETHUSDT": {
 						"name": "Ethereum / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
 					},
@@ -113,7 +125,15 @@ func main() {
 						"name": "Solana / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/4128/small/solana.png",
 					},
+					"SOLUSDT": {
+						"name": "Solana / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/4128/small/solana.png",
+					},
 					"BINANCE:BNBUSDT": {
+						"name": "BNB / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/825/small/bnb.png",
+					},
+					"BNBUSDT": {
 						"name": "BNB / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/825/small/bnb.png",
 					},
@@ -121,7 +141,15 @@ func main() {
 						"name": "Cardano / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/975/small/cardano.png",
 					},
+					"ADAUSDT": {
+						"name": "Cardano / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/975/small/cardano.png",
+					},
 					"BINANCE:XRPUSDT": {
+						"name": "XRP / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/44/small/xrp.png",
+					},
+					"XRPUSDT": {
 						"name": "XRP / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/44/small/xrp.png",
 					},
@@ -129,7 +157,15 @@ func main() {
 						"name": "Polkadot / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
 					},
+					"DOTUSDT": {
+						"name": "Polkadot / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
+					},
 					"BINANCE:BTCUSDC": {
+						"name": "Bitcoin / USDC",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+					},
+					"BTCUSDC": {
 						"name": "Bitcoin / USDC",
 						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
 					},
@@ -137,7 +173,15 @@ func main() {
 						"name": "Thena / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/28373/small/thena.png",
 					},
+					"THEUSDT": {
+						"name": "Thena / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/28373/small/thena.png",
+					},
 					"BINANCE:WUSDT": {
+						"name": "Wormhole / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/36653/small/wormhole.png",
+					},
+					"WUSDT": {
 						"name": "Wormhole / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/36653/small/wormhole.png",
 					},
