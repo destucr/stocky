@@ -58,6 +58,22 @@ func main() {
 	fc := finnhub.NewFinnhubClient(hub, memStore, dbStore, cfg.FinnhubAPIKey)
 	go fc.Connect()
 
+	// Background Cleanup Task: Prune trades older than 24 hours every hour
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			rows, err := dbStore.CleanupOldTrades(ctx, 24*time.Hour)
+			cancel()
+			if err != nil {
+				slog.Error("Database cleanup failed", "error", err)
+			} else if rows > 0 {
+				slog.Info("Database cleanup successful", "rows_deleted", rows)
+			}
+		}
+	}()
+
 	// Initialize Router
 	mux := http.NewServeMux()
 

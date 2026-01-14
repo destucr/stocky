@@ -152,6 +152,18 @@ func (s *PostgresStore) GetOHLCHistory(ctx context.Context, symbol string, inter
 	return history, nil
 }
 
+func (s *PostgresStore) CleanupOldTrades(ctx context.Context, retention time.Duration) (int64, error) {
+	threshold := time.Now().Add(-retention)
+	query := `DELETE FROM trades WHERE timestamp < $1`
+	
+	result, err := s.pool.Exec(ctx, query, threshold)
+	if err != nil {
+		return 0, err
+	}
+	
+	return result.RowsAffected(), nil
+}
+
 func (s *PostgresStore) Close() {
 	s.pool.Close()
 }
