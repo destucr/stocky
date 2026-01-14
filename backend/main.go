@@ -58,68 +58,82 @@ func main() {
 	fc := finnhub.NewFinnhubClient(hub, memStore, dbStore, cfg.FinnhubAPIKey)
 	go fc.Connect()
 
+	// Initialize Router
+	mux := http.NewServeMux()
+
 	// WebSocket endpoint
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		websocket.ServeWs(hub, w, r)
 	})
 
-	// API Handlers with CORS
-	apiHandler := func(h http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-			
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			h(w, r)
-		}
-	}
-
 	// API: Get latest prices
-	http.HandleFunc("/api/prices", apiHandler(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/prices", func(w http.ResponseWriter, r *http.Request) {
 		prices := memStore.GetLatestPrices()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(prices)
-	}))
+	})
 
-	// API: Get metadata for symbols
-	http.HandleFunc("/api/metadata", apiHandler(func(w http.ResponseWriter, r *http.Request) {
-		// Basic metadata mapping. In a real app, this could be fetched from Finnhub or a cache.
-		metadata := map[string]map[string]string{
-			"BINANCE:BTCUSDT": {
-				"name": "Bitcoin / Tether",
-				"logo": "https://static.finnhub.io/logo/8746ad10-c033-11ea-8000-000000000000.png",
-			},
-			"BINANCE:ETHUSDT": {
-				"name": "Ethereum / Tether",
-				"logo": "https://static.finnhub.io/logo/8746ad10-c033-11ea-8000-000000000000.png", // Generic crypto for now or Eth logo if known
-			},
-			"BINANCE:SOLUSDT": {
-				"name": "Solana / Tether",
-				"logo": "https://static.finnhub.io/logo/8746ad10-c033-11ea-8000-000000000000.png",
-			},
-			"OANDA:EUR_USD": {
-				"name": "Euro / US Dollar",
-				"logo": "https://static.finnhub.io/logo/8746ad10-c033-11ea-8000-000000000000.png",
-			},
-			"OANDA:GBP_USD": {
-				"name": "British Pound / US Dollar",
-				"logo": "https://static.finnhub.io/logo/8746ad10-c033-11ea-8000-000000000000.png",
-			},
-			"OANDA:USD_JPY": {
-				"name": "US Dollar / Japanese Yen",
-				"logo": "https://static.finnhub.io/logo/8746ad10-c033-11ea-8000-000000000000.png",
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(metadata)
-	}))
-
+			// API: Get metadata for symbols
+			mux.HandleFunc("/api/metadata", func(w http.ResponseWriter, r *http.Request) {
+				metadata := map[string]map[string]string{
+					"BINANCE:BTCUSDT": {
+						"name": "Bitcoin / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+					},
+					"BINANCE:ETHUSDT": {
+						"name": "Ethereum / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
+					},
+					"BINANCE:SOLUSDT": {
+						"name": "Solana / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/4128/small/solana.png",
+					},
+					"BINANCE:BNBUSDT": {
+						"name": "BNB / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/825/small/bnb.png",
+					},
+					"BINANCE:ADAUSDT": {
+						"name": "Cardano / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/975/small/cardano.png",
+					},
+					"BINANCE:XRPUSDT": {
+						"name": "XRP / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/44/small/xrp.png",
+					},
+					"BINANCE:DOTUSDT": {
+						"name": "Polkadot / Tether",
+						"logo": "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
+					},
+					"OANDA:EUR_USD": {
+						"name": "Euro / US Dollar",
+						"logo": "https://flagcdn.com/w80/eu.png",
+					},
+					"OANDA:GBP_USD": {
+						"name": "British Pound / US Dollar",
+						"logo": "https://flagcdn.com/w80/gb.png",
+					},
+					"OANDA:USD_JPY": {
+						"name": "US Dollar / Japanese Yen",
+						"logo": "https://flagcdn.com/w80/jp.png",
+					},
+					"OANDA:AUD_USD": {
+						"name": "Australian Dollar / US Dollar",
+						"logo": "https://flagcdn.com/w80/au.png",
+					},
+					"OANDA:USD_CAD": {
+						"name": "US Dollar / Canadian Dollar",
+						"logo": "https://flagcdn.com/w80/ca.png",
+					},
+					"OANDA:USD_CHF": {
+						"name": "US Dollar / Swiss Franc",
+						"logo": "https://flagcdn.com/w80/ch.png",
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(metadata)
+			})
 	// API: Get history for a symbol
-	http.HandleFunc("/api/history", apiHandler(func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/history", func(w http.ResponseWriter, r *http.Request) {
 		symbol := r.URL.Query().Get("symbol")
 		if symbol == "" {
 			http.Error(w, "symbol query parameter is required", http.StatusBadRequest)
@@ -158,10 +172,24 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(history)
-	}))
+	})
+
+	// Global CORS and Logging Middleware
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		mux.ServeHTTP(w, r)
+	})
 
 	slog.Info("Starting server", "port", cfg.Port)
-	if err := http.ListenAndServe(":"+cfg.Port, nil); err != nil {
+	if err := http.ListenAndServe(":"+cfg.Port, handler); err != nil {
 		slog.Error("Server failed to start", "error", err)
 		os.Exit(1)
 	}
