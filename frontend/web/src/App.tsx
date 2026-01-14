@@ -552,11 +552,14 @@ function App() {
               return newSymbols.length > 0 ? [...prev, ...newSymbols].sort() : prev;
             });
 
-            message.data.forEach(trade => {
-              if (activeSymbolRef.current && trade.s === activeSymbolRef.current) {
-                processTrade(trade, message.fetched_at);
-              }
-            });
+            // Process all trades in the message but only update chart for the active symbol once
+            const trades = message.data.filter(t => t.s === activeSymbolRef.current);
+            if (trades.length > 0) {
+                // If multiple trades exist for the same symbol in one frame, 
+                // we process them sequentially but the charting library is efficient 
+                // enough to handle these micro-updates.
+                trades.forEach(trade => processTrade(trade));
+            }
           }
         } catch (err) { console.error("WS Error:", err); }
       };
@@ -762,109 +765,78 @@ function App() {
     } catch (err) { console.error("History Error:", err); }
   };
 
-      const processTrade = (trade: TradeData, fetchedAt?: number) => {
-        const tradeTime = Math.floor(trade.t / 1000);
-        const candleInterval = intervalRef.current; 
-        const candleTime = Math.floor(tradeTime / candleInterval) * candleInterval;
-    // Prevent updates for data older than what we already have, as lightweight-charts 
-    // requires strictly increasing or equal timestamps for update().
-    if (candleTime < lastCandleTimeRef.current) {
-        return;
-    }
+  const processTrade = (trade: TradeData) => {
+    const tradeTime = Math.floor(trade.t / 1000);
+    const candleIntervalVal = intervalRef.current; 
+    const candleTime = Math.floor(tradeTime / candleIntervalVal) * candleIntervalVal;
 
-    const updateMAs = (currentClose: number, time: Time, isNewCandle: boolean) => {
-        // We use a copy of candle history + the current active candle to calculate MAs
-        const history = [...candleHistoryRef.current];
-        
-        // For the purpose of calculation, we append the "live" candle to history
-        const virtualHistory = [...history, { time, close: currentClose }];
-        
-        const calcLastMA = (period: number) => {
-            if (virtualHistory.length < period) return null;
-            let sum = 0;
-            for (let i = 0; i < period; i++) {
-                sum += virtualHistory[virtualHistory.length - 1 - i].close;
-            }
-            return sum / period;
-        };
+    if (candleTime < lastCandleTimeRef.current) return;
 
-        const v7 = calcLastMA(7);
-        const v25 = calcLastMA(25);
-        const v99 = calcLastMA(99);
+    const isNewCandle = !currentCandleRef.current || candleTime > lastCandleTimeRef.current;
 
-        if (v7 !== null) {
-            ma7SeriesRef.current?.update({ time, value: v7 });
-            if (isNewCandle) ma7HistoryRef.current.push({ time, value: v7 });
-        }
-        if (v25 !== null) {
-            ma25SeriesRef.current?.update({ time, value: v25 });
-            if (isNewCandle) ma25HistoryRef.current.push({ time, value: v25 });
-        }
-        if (v99 !== null) {
-            ma99SeriesRef.current?.update({ time, value: v99 });
-            if (isNewCandle) ma99HistoryRef.current.push({ time, value: v99 });
-        }
-
-        return { v7, v25, v99 };
-    };
-
-    let mas = { v7: null as any, v25: null as any, v99: null as any };
-
-    if (!currentCandleRef.current || candleTime > lastCandleTimeRef.current) {
-      // Finalize the previous candle if it existed
+    if (isNewCandle) {
       if (currentCandleRef.current) {
         candleHistoryRef.current.push({ 
             time: currentCandleRef.current.time, 
             close: currentCandleRef.current.close 
         });
+        // Limit history size to 500 to keep MA calculations fast
+        if (candleHistoryRef.current.length > 500) candleHistoryRef.current.shift();
       }
 
-      const newCandle = {
+      currentCandleRef.current = {
         time: candleTime as Time,
         open: trade.p, high: trade.p, low: trade.p, close: trade.p,
         volume: trade.v,
       };
-      currentCandleRef.current = newCandle;
       lastCandleTimeRef.current = candleTime;
-      seriesRef.current?.update(newCandle);
-      lineSeriesRef.current?.update({ time: candleTime as Time, value: trade.p });
-      areaSeriesRef.current?.update({ time: candleTime as Time, value: trade.p });
-      
-      volumeSeriesRef.current?.update({ 
-          time: candleTime as Time, 
-          value: trade.v, 
-          color: COLORS.success 
-      });
-      
-      mas = updateMAs(trade.p, candleTime as Time, true);
-
-    } else if (candleTime === lastCandleTimeRef.current) {
-      const c = currentCandleRef.current;
+    } else {
+      const c = currentCandleRef.current!;
       c.high = Math.max(c.high, trade.p);
       c.low = Math.min(c.low, trade.p);
       c.close = trade.p;
       c.volume += trade.v;
-      c.time = lastCandleTimeRef.current as Time;
-      
-      seriesRef.current?.update(c);
-      lineSeriesRef.current?.update({ time: c.time, value: trade.p });
-      areaSeriesRef.current?.update({ time: c.time, value: trade.p });
-      
-      volumeSeriesRef.current?.update({
-        time: c.time, value: c.volume,
-        color: c.close >= c.open ? COLORS.success : COLORS.danger
-      });
-
-      mas = updateMAs(trade.p, c.time, false);
     }
-    updateLegendUI(currentCandleRef.current, activeSymbolRef.current, mas.v7, mas.v25, mas.v99);
 
-    if (fetchedAt) {
-        const latency = Date.now() - fetchedAt;
-        if (Math.random() < 0.05) {
-            console.log(`[Latency] ${latency}ms from backend fetch to chart draw`);
+    // High Performance MA calculation (Only for the latest point)
+    const calculateLastMA = (period: number, currentPrice: number) => {
+        const hist = candleHistoryRef.current;
+        const len = hist.length;
+        if (len + 1 < period) return null;
+        
+        let sum = currentPrice;
+        for (let i = 0; i < period - 1; i++) {
+            sum += hist[len - 1 - i].close;
         }
+        return sum / period;
+    };
+
+    const v7 = calculateLastMA(7, trade.p);
+    const v25 = calculateLastMA(25, trade.p);
+    const v99 = calculateLastMA(99, trade.p);
+
+    // Single Frame UI Update
+    const time = candleTime as Time;
+    const price = trade.p;
+    
+    if (chartType === 'candlestick') {
+        seriesRef.current?.update(currentCandleRef.current!);
+    } else if (chartType === 'line') {
+        lineSeriesRef.current?.update({ time, value: price });
+    } else {
+        areaSeriesRef.current?.update({ time, value: price });
     }
+
+    volumeSeriesRef.current?.update({
+        time, value: currentCandleRef.current!.volume,
+        color: currentCandleRef.current!.close >= currentCandleRef.current!.open ? COLORS.success : COLORS.danger
+    });
+
+    if (v7 !== null) ma7SeriesRef.current?.update({ time, value: v7 });
+    if (v25 !== null) ma25SeriesRef.current?.update({ time, value: v25 });
+    if (v99 !== null) ma99SeriesRef.current?.update({ time, value: v99 });
+
+    updateLegendUI(currentCandleRef.current, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined);
   };
 
       const handleZoomIn = () => {

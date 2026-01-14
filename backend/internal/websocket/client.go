@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -98,6 +99,14 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		slog.Error("WebSocket upgrade failed", "error", err, "remote_addr", r.RemoteAddr)
 		return
 	}
+
+	// Disable Nagle's algorithm for instant packet transmission
+	if netConn := conn.UnderlyingConn(); netConn != nil {
+		if tcpConn, ok := netConn.(*net.TCPConn); ok {
+			tcpConn.SetNoDelay(true)
+		}
+	}
+
 	client := &Client{Hub: hub, Conn: conn, send: make(chan []byte, 1024)}
 	client.Hub.register <- client
 
