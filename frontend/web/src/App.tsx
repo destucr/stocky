@@ -21,6 +21,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { createChart, ColorType, IChartApi, ISeriesApi, Time, PriceScaleMode, MouseEventParams } from 'lightweight-charts';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import TimelineIcon from '@mui/icons-material/Timeline';
+import ShowChartIcon from '@mui/icons-material/ShowChart';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
@@ -84,7 +85,7 @@ function App() {
   const [symbolMetadata, setSymbolMetadata] = useState<Record<string, SymbolMetadata>>({});
   const symbolMetadataRef = useRef<Record<string, SymbolMetadata>>({});
   const [isConnected, setIsConnected] = useState(false);
-  const [chartType, setChartType] = useState<'candlestick' | 'line'>('candlestick');
+  const [chartType, setChartType] = useState<'candlestick' | 'line' | 'area'>('candlestick');
   const [isLogScale, setIsLogScale] = useState(false);
   const [timeframe, setTimeframe] = useState<number>(60);
   const timeframeRef = useRef(timeframe);
@@ -105,6 +106,7 @@ function App() {
   
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const areaSeriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const ma7SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const ma25SeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
@@ -277,6 +279,14 @@ function App() {
         visible: chartType === 'line',
       });
 
+      const areaSeries = priceChart.addAreaSeries({
+        lineColor: COLORS.accent,
+        topColor: 'rgba(33, 150, 243, 0.4)',
+        bottomColor: 'rgba(33, 150, 243, 0.0)',
+        lineWidth: 2,
+        visible: chartType === 'area',
+      });
+
       const volumeSeries = volumeChart.addHistogramSeries({
         color: COLORS.success,
         priceFormat: { type: 'volume' },
@@ -290,6 +300,7 @@ function App() {
       volumeChartRef.current = volumeChart;
       seriesRef.current = candlestickSeries;
       lineSeriesRef.current = lineSeries;
+      areaSeriesRef.current = areaSeries;
       volumeSeriesRef.current = volumeSeries;
       ma7SeriesRef.current = m7;
       ma25SeriesRef.current = m25;
@@ -479,9 +490,10 @@ function App() {
 
   // Handle Chart Type Change
   useEffect(() => {
-    if (seriesRef.current && lineSeriesRef.current) {
+    if (seriesRef.current && lineSeriesRef.current && areaSeriesRef.current) {
       seriesRef.current.applyOptions({ visible: chartType === 'candlestick' });
       lineSeriesRef.current.applyOptions({ visible: chartType === 'line' });
+      areaSeriesRef.current.applyOptions({ visible: chartType === 'area' });
     }
   }, [chartType]);
 
@@ -690,6 +702,7 @@ function App() {
             // Update series with new resolution
             seriesRef.current?.setData(candles);
             lineSeriesRef.current?.setData(lineData);
+            areaSeriesRef.current?.setData(lineData);
             volumeSeriesRef.current?.setData(volumeData);
             ma7SeriesRef.current?.setData(ma7);
             ma25SeriesRef.current?.setData(ma25);
@@ -818,6 +831,7 @@ function App() {
       lastCandleTimeRef.current = candleTime;
       seriesRef.current?.update(newCandle);
       lineSeriesRef.current?.update({ time: candleTime as Time, value: trade.p });
+      areaSeriesRef.current?.update({ time: candleTime as Time, value: trade.p });
       
       volumeSeriesRef.current?.update({ 
           time: candleTime as Time, 
@@ -837,6 +851,7 @@ function App() {
       
       seriesRef.current?.update(c);
       lineSeriesRef.current?.update({ time: c.time, value: trade.p });
+      areaSeriesRef.current?.update({ time: c.time, value: trade.p });
       
       volumeSeriesRef.current?.update({
         time: c.time, value: c.volume,
@@ -1030,6 +1045,11 @@ function App() {
                     <Tooltip title="Line Chart">
                       <ToggleButton value="line" sx={{ border: 'none', color: COLORS.textSecondary, '&.Mui-selected': { color: COLORS.accent, bgcolor: COLORS.borderLight } }}>
                         <TimelineIcon fontSize="small" />
+                      </ToggleButton>
+                    </Tooltip>
+                    <Tooltip title="Area Chart">
+                      <ToggleButton value="area" sx={{ border: 'none', color: COLORS.textSecondary, '&.Mui-selected': { color: COLORS.accent, bgcolor: COLORS.borderLight } }}>
+                        <ShowChartIcon fontSize="small" />
                       </ToggleButton>
                     </Tooltip>
                   </ToggleButtonGroup>
