@@ -146,39 +146,11 @@ func (s *PostgresStore) GetHistory(ctx context.Context, symbol string, limit int
 }
 
 func (s *PostgresStore) GetOHLCHistory(ctx context.Context, symbol string, intervalSeconds int, limit int) ([]Candle, error) {
-	// 1. First, try to get as much as possible from persistent_candles
-	queryPersistent := `
-		SELECT timestamp, open, high, low, close, volume
-		FROM persistent_candles
-		WHERE symbol = $1 AND interval_secs = $2
-		ORDER BY timestamp DESC
-		LIMIT $3`
-	
-	rows, err := s.pool.Query(ctx, queryPersistent, symbol, intervalSeconds, limit)
-	if err != nil {
-		return nil, err
-	}
-	
-	history := make([]Candle, 0)
-	lastPersistentTs := time.Time{}
-	for rows.Next() {
-		var c Candle
-		if err := rows.Scan(&c.Time, &c.Open, &c.High, &c.Low, &c.Close, &c.Volume); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		history = append(history, c)
-		if lastPersistentTs.IsZero() {
-			lastPersistentTs = c.Time
-		}
-	}
-	rows.Close()
-
-	// 2. If we need more data or the latest data (which isn't archived yet), 
-	// fetch from the raw trades table
-	if len(history) < limit {
-		remaining := limit - len(history)
-		queryTrades := `
+	// This query combines archived persistent candles with real-time aggregated trades.
+	// It uses a UNION to ensure we always get the absolute latest data from the trades table,
+	// even if it hasn't been archived yet.
+	query := `
+		WITH live_data AS (
 			SELECT 
 				(to_timestamp(floor(extract(epoch from timestamp) / $1) * $1) AT TIME ZONE 'UTC')::timestamptz AS bucket,
 				COALESCE((array_agg(price ORDER BY timestamp ASC, id ASC))[1], 0.0)::DOUBLE PRECISION AS open,
@@ -187,27 +159,45 @@ func (s *PostgresStore) GetOHLCHistory(ctx context.Context, symbol string, inter
 				COALESCE((array_agg(price ORDER BY timestamp DESC, id DESC))[1], 0.0)::DOUBLE PRECISION AS close,
 				COALESCE(sum(volume), 0.0)::DOUBLE PRECISION AS volume
 			FROM trades 
-			WHERE symbol = $2 AND timestamp > $3
-			GROUP BY bucket 
-			ORDER BY bucket DESC 
-			LIMIT $4`
+			WHERE symbol = $2
+			GROUP BY bucket
+		),
+		archived_data AS (
+			SELECT 
+				timestamp as bucket, open, high, low, close, volume
+			FROM persistent_candles
+			WHERE symbol = $2 AND interval_secs = $1
+		)
+		SELECT bucket, open, high, low, close, volume FROM (
+			SELECT * FROM live_data
+			UNION ALL
+			SELECT * FROM archived_data
+		) combined
+		ORDER BY bucket DESC
+		LIMIT $3`
 
-		rows, err = s.pool.Query(ctx, queryTrades, intervalSeconds, symbol, lastPersistentTs, remaining)
-		if err != nil {
+	rows, err := s.pool.Query(ctx, query, intervalSeconds, symbol, limit)
+	if err != nil {
+		slog.Error("Failed to fetch combined OHLC history", "error", err, "symbol", symbol)
+		return nil, err
+	}
+	defer rows.Close()
+
+	history := make([]Candle, 0)
+	seenBuckets := make(map[int64]bool)
+
+	for rows.Next() {
+		var c Candle
+		if err := rows.Scan(&c.Time, &c.Open, &c.High, &c.Low, &c.Close, &c.Volume); err != nil {
 			return nil, err
 		}
-		defer rows.Close()
-
-		tradeCandles := make([]Candle, 0, remaining)
-		for rows.Next() {
-			var c Candle
-			if err := rows.Scan(&c.Time, &c.Open, &c.High, &c.Low, &c.Close, &c.Volume); err != nil {
-				return nil, err
-			}
-			tradeCandles = append(tradeCandles, c)
+		
+		// Deduplicate: If a bucket exists in both tables, the live_data (newer aggregation) wins
+		ts := c.Time.Unix()
+		if !seenBuckets[ts] {
+			history = append(history, c)
+			seenBuckets[ts] = true
 		}
-		// Prepend newer trade-derived candles (DESC) before older persistent candles (DESC)
-		history = append(tradeCandles, history...)
 	}
 
 	// Reverse to get chronological order
@@ -231,8 +221,8 @@ func (s *PostgresStore) CleanupOldTrades(ctx context.Context, retention time.Dur
 }
 
 func (s *PostgresStore) ArchiveTradesToCandles(ctx context.Context, intervalSeconds int) error {
-	// Aggregate trades from the last hour into persistent candles
-	// We use ON CONFLICT to avoid duplicates if the task runs multiple times
+	// Archive everything currently in the trades table. 
+	// ON CONFLICT ensures we don't create duplicates and always have the latest aggregate.
 	query := `
 		INSERT INTO persistent_candles (symbol, interval_secs, open, high, low, close, volume, timestamp)
 		SELECT 
@@ -245,7 +235,6 @@ func (s *PostgresStore) ArchiveTradesToCandles(ctx context.Context, intervalSeco
 			COALESCE(sum(volume), 0.0) as volume,
 			(to_timestamp(floor(extract(epoch from timestamp) / $1) * $1) AT TIME ZONE 'UTC')::timestamptz as bucket
 		FROM trades
-		WHERE timestamp >= (NOW() - INTERVAL '2 hours')
 		GROUP BY symbol, bucket
 		ON CONFLICT (symbol, interval_secs, timestamp) DO UPDATE 
 		SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, 
@@ -254,7 +243,6 @@ func (s *PostgresStore) ArchiveTradesToCandles(ctx context.Context, intervalSeco
 	_, err := s.pool.Exec(ctx, query, intervalSeconds)
 	return err
 }
-
 func (s *PostgresStore) Close() {
 	s.pool.Close()
 }

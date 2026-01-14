@@ -714,7 +714,8 @@ function App() {
         // We set candleHistoryRef to all candles EXCEPT the last one, 
         // because the last one is stored in currentCandleRef and will be 
         // pushed to history only when it is finalized (i.e., when a new candle starts).
-        candleHistoryRef.current = candles.slice(0, -1);
+        const historyData = candles.slice(0, -1);
+        candleHistoryRef.current = historyData;
         
         const ma7 = calculateMA(candles, 7);
         const ma25 = calculateMA(candles, 25);
@@ -754,16 +755,8 @@ function App() {
           volume: latestCandle.volume
         };
         
-        // Use a small timeout to ensure the legendRef is ready if this is the first load
-        setTimeout(() => {
-            updateLegendUI(
-                currentCandleRef.current, 
-                symbol,
-                ma7.length > 0 ? ma7[ma7.length - 1].value : undefined,
-                ma25.length > 0 ? ma25[ma25.length - 1].value : undefined,
-                ma99.length > 0 ? ma99[ma99.length - 1].value : undefined
-            );
-        }, 50);
+        // Immediate UI sync
+        drawChartUpdate(latestCandle.close);
 
         // Initialize lastRangeRef for zoom anchoring by calculating min/max from data
         if (candles.length > 0) {

@@ -60,16 +60,16 @@ func main() {
 
 	// Background Task: Archive to permanent candles then prune raw trades
 	go func() {
-		ticker := time.NewTicker(15 * time.Minute)
+		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			
-			// 1. Archive last 2 hours of trades into permanent 1m candles
+			// 1. Archive everything from trades into permanent 1m candles
 			if err := dbStore.ArchiveTradesToCandles(ctx, 60); err != nil {
 				slog.Error("Failed to archive trades to candles", "error", err)
 			} else {
-				slog.Info("Successfully archived trades to permanent candles")
+				slog.Debug("Successfully archived trades to permanent candles")
 			}
 
 			// 2. Prune raw trades older than 24 hours (we have the candles now!)
