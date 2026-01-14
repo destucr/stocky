@@ -183,13 +183,12 @@ function App() {
                           padding: { top: 0, bottom: 0, left: 0, right: 0 },
                           attributionLogo: false,
                         },
-                        watermark: {
-                          visible: false,
-                        },                grid: {
-                  vertLines: { color: COLORS.border },
-                  horzLines: { color: COLORS.border },
-                },        handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
-        handleScroll: { mouseWheel: false, pressedMouseMove: true },
+        grid: {
+          vertLines: { color: COLORS.border },
+          horzLines: { color: COLORS.border },
+        },
+        handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+        handleScroll: { mouseWheel: true, pressedMouseMove: true },
       };
 
       // 1. Price Chart (Background Layer)
@@ -214,8 +213,8 @@ function App() {
           timeVisible: true,
           secondsVisible: true,
           borderColor: COLORS.borderLight,
-          shiftVisibleRangeOnNewBar: true,
-          rightOffset: 10,
+          shiftVisibleRangeOnNewBar: false, // Allow user to stay at historical data
+          rightOffset: 100, // Significant whitespace on the right
           barSpacing: 10,
         },
         rightPriceScale: {
@@ -320,6 +319,10 @@ function App() {
       // --- Real-time Vertical Price Zoom Logic ---
       const handleWheel = (e: WheelEvent) => {
         if (!chartRef.current || !seriesRef.current || !container) return;
+        
+        // Only perform vertical zoom if Alt key is pressed
+        if (!e.altKey) return;
+        
         e.preventDefault();
 
         const priceScale = chartRef.current.priceScale('right');
