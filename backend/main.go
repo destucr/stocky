@@ -58,18 +58,27 @@ func main() {
 	fc := finnhub.NewFinnhubClient(hub, memStore, dbStore, cfg.FinnhubAPIKey)
 	go fc.Connect()
 
-	// Background Cleanup Task: Prune trades older than 24 hours every hour
+	// Background Task: Archive to permanent candles then prune raw trades
 	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
+		ticker := time.NewTicker(15 * time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			
+			// 1. Archive last 2 hours of trades into permanent 1m candles
+			if err := dbStore.ArchiveTradesToCandles(ctx, 60); err != nil {
+				slog.Error("Failed to archive trades to candles", "error", err)
+			} else {
+				slog.Info("Successfully archived trades to permanent candles")
+			}
+
+			// 2. Prune raw trades older than 24 hours (we have the candles now!)
 			rows, err := dbStore.CleanupOldTrades(ctx, 24*time.Hour)
 			cancel()
 			if err != nil {
-				slog.Error("Database cleanup failed", "error", err)
+				slog.Error("Database pruning failed", "error", err)
 			} else if rows > 0 {
-				slog.Info("Database cleanup successful", "rows_deleted", rows)
+				slog.Info("Database pruning successful", "rows_deleted", rows)
 			}
 		}
 	}()

@@ -47,6 +47,19 @@ func (s *PostgresStore) InitSchema(ctx context.Context) error {
 		price DOUBLE PRECISION NOT NULL,
 		timestamp TIMESTAMPTZ NOT NULL
 	);
+
+	CREATE TABLE IF NOT EXISTS persistent_candles (
+		symbol TEXT NOT NULL,
+		interval_secs INTEGER NOT NULL,
+		open DOUBLE PRECISION NOT NULL,
+		high DOUBLE PRECISION NOT NULL,
+		low DOUBLE PRECISION NOT NULL,
+		close DOUBLE PRECISION NOT NULL,
+		volume DOUBLE PRECISION NOT NULL,
+		timestamp TIMESTAMPTZ NOT NULL,
+		PRIMARY KEY (symbol, interval_secs, timestamp)
+	);
+	CREATE INDEX IF NOT EXISTS idx_candles_lookup ON persistent_candles (symbol, interval_secs, timestamp DESC);
 	`
 	_, err := s.pool.Exec(ctx, query)
 	return err
@@ -106,42 +119,65 @@ func (s *PostgresStore) GetHistory(ctx context.Context, symbol string, limit int
 }
 
 func (s *PostgresStore) GetOHLCHistory(ctx context.Context, symbol string, intervalSeconds int, limit int) ([]Candle, error) {
-	// Simple OHLC aggregation using array_agg for first/last
-	query := `
-		SELECT 
-			(to_timestamp(floor(extract(epoch from timestamp) / $1) * $1) AT TIME ZONE 'UTC')::timestamptz AS bucket,
-			COALESCE((array_agg(price ORDER BY timestamp ASC, id ASC))[1], 0.0)::DOUBLE PRECISION AS open,
-			COALESCE(max(price), 0.0)::DOUBLE PRECISION AS high,
-			COALESCE(min(price), 0.0)::DOUBLE PRECISION AS low,
-			COALESCE((array_agg(price ORDER BY timestamp DESC, id DESC))[1], 0.0)::DOUBLE PRECISION AS close,
-			COALESCE(sum(volume), 0.0)::DOUBLE PRECISION AS volume
-		FROM trades 
-		WHERE symbol = $2 
-		GROUP BY bucket 
-		ORDER BY bucket DESC 
+	// 1. First, try to get as much as possible from persistent_candles
+	queryPersistent := `
+		SELECT timestamp, open, high, low, close, volume
+		FROM persistent_candles
+		WHERE symbol = $1 AND interval_secs = $2
+		ORDER BY timestamp DESC
 		LIMIT $3`
-
-	rows, err := s.pool.Query(ctx, query, intervalSeconds, symbol, limit)
+	
+	rows, err := s.pool.Query(ctx, queryPersistent, symbol, intervalSeconds, limit)
 	if err != nil {
-		slog.Error("Failed to execute OHLC history query", "error", err, "symbol", symbol, "interval", intervalSeconds)
 		return nil, err
 	}
-	if rows == nil {
-		return []Candle{}, nil
-	}
-	defer rows.Close()
-
+	
 	history := make([]Candle, 0)
+	lastPersistentTs := time.Time{}
 	for rows.Next() {
 		var c Candle
 		if err := rows.Scan(&c.Time, &c.Open, &c.High, &c.Low, &c.Close, &c.Volume); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		history = append(history, c)
+		if lastPersistentTs.IsZero() {
+			lastPersistentTs = c.Time
+		}
 	}
+	rows.Close()
 
-	if err := rows.Err(); err != nil {
-		return nil, err
+	// 2. If we need more data or the latest data (which isn't archived yet), 
+	// fetch from the raw trades table
+	if len(history) < limit {
+		remaining := limit - len(history)
+		queryTrades := `
+			SELECT 
+				(to_timestamp(floor(extract(epoch from timestamp) / $1) * $1) AT TIME ZONE 'UTC')::timestamptz AS bucket,
+				COALESCE((array_agg(price ORDER BY timestamp ASC, id ASC))[1], 0.0)::DOUBLE PRECISION AS open,
+				COALESCE(max(price), 0.0)::DOUBLE PRECISION AS high,
+				COALESCE(min(price), 0.0)::DOUBLE PRECISION AS low,
+				COALESCE((array_agg(price ORDER BY timestamp DESC, id DESC))[1], 0.0)::DOUBLE PRECISION AS close,
+				COALESCE(sum(volume), 0.0)::DOUBLE PRECISION AS volume
+			FROM trades 
+			WHERE symbol = $2 AND timestamp > $3
+			GROUP BY bucket 
+			ORDER BY bucket DESC 
+			LIMIT $4`
+
+		rows, err = s.pool.Query(ctx, queryTrades, intervalSeconds, symbol, lastPersistentTs, remaining)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var c Candle
+			if err := rows.Scan(&c.Time, &c.Open, &c.High, &c.Low, &c.Close, &c.Volume); err != nil {
+				return nil, err
+			}
+			history = append(history, c)
+		}
 	}
 
 	// Reverse to get chronological order
@@ -162,6 +198,31 @@ func (s *PostgresStore) CleanupOldTrades(ctx context.Context, retention time.Dur
 	}
 	
 	return result.RowsAffected(), nil
+}
+
+func (s *PostgresStore) ArchiveTradesToCandles(ctx context.Context, intervalSeconds int) error {
+	// Aggregate trades from the last hour into persistent candles
+	// We use ON CONFLICT to avoid duplicates if the task runs multiple times
+	query := `
+		INSERT INTO persistent_candles (symbol, interval_secs, open, high, low, close, volume, timestamp)
+		SELECT 
+			symbol,
+			$1 as interval_secs,
+			COALESCE((array_agg(price ORDER BY timestamp ASC, id ASC))[1], 0.0) as open,
+			COALESCE(max(price), 0.0) as high,
+			COALESCE(min(price), 0.0) as low,
+			COALESCE((array_agg(price ORDER BY timestamp DESC, id DESC))[1], 0.0) as close,
+			COALESCE(sum(volume), 0.0) as volume,
+			(to_timestamp(floor(extract(epoch from timestamp) / $1) * $1) AT TIME ZONE 'UTC')::timestamptz as bucket
+		FROM trades
+		WHERE timestamp >= (NOW() - INTERVAL '2 hours')
+		GROUP BY symbol, bucket
+		ON CONFLICT (symbol, interval_secs, timestamp) DO UPDATE 
+		SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, 
+		    close = EXCLUDED.close, volume = EXCLUDED.volume`
+	
+	_, err := s.pool.Exec(ctx, query, intervalSeconds)
+	return err
 }
 
 func (s *PostgresStore) Close() {
