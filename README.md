@@ -2,7 +2,7 @@
 
 Stocky is a real-time stock and cryptocurrency tracking application featuring live data visualization with interactive charts. It utilizes a Go backend to fetch data from Finnhub via WebSockets and stores it in PostgreSQL, while the React frontend provides a smooth and responsive user experience using `lightweight-charts`.
 
-![Stocky Screenshot](screenshot.png)
+![Stocky Screenshot](assets/screenshot.png)
 
 ## Features
 
