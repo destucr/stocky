@@ -87,8 +87,8 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [chartType, setChartType] = useState<'candlestick' | 'line' | 'area'>('candlestick');
   const [isLogScale, setIsLogScale] = useState(false);
-  const [interval, setInterval] = useState<number>(60);
-  const intervalRef = useRef(interval);
+  const [chartInterval, setChartInterval] = useState<number>(60);
+  const intervalRef = useRef(chartInterval);
   const lastSymbolRef = useRef<string>('');
   const [isAutoScale, setIsAutoScale] = useState(true);
   const lastPriceRef = useRef<number | null>(null);
@@ -124,8 +124,8 @@ function App() {
 
   // Sync intervalRef
   useEffect(() => {
-    intervalRef.current = interval;
-  }, [interval]);
+    intervalRef.current = chartInterval;
+  }, [chartInterval]);
 
   // Fetch metadata on mount
   useEffect(() => {
@@ -610,12 +610,11 @@ function App() {
           lastSymbolRef.current = activeSymbol;
         }
     
-        // Always fetch new history for the selected interval
-        if (activeSymbol) {
-          fetchHistory(activeSymbol, interval);
-        }
-      }, [activeSymbol, interval]);
-  const handleResetScale = () => {
+            // Always fetch new history for the selected interval
+            if (activeSymbol) {
+              fetchHistory(activeSymbol, chartInterval);
+            }
+          }, [activeSymbol, chartInterval]);  const handleResetScale = () => {
     if (chartRef.current) {
       const priceScale = chartRef.current.priceScale('right');
       priceScale.applyOptions({ 
@@ -629,11 +628,10 @@ function App() {
     }
   };
 
-  const fetchHistory = async (symbol: string, interval: number) => {
-    try {
-      // Request more candles for smaller timeframes to keep the chart full
-      let limit = 500;
-      if (interval <= 1) limit = 2000;
+      const fetchHistory = async (symbol: string, interval: number) => {
+        try {
+          // Request more candles for smaller intervals to keep the chart full
+          let limit = 500;      if (interval <= 1) limit = 2000;
       else if (interval <= 10) limit = 1000;
       else if (interval <= 60) limit = 500;
 
@@ -764,11 +762,10 @@ function App() {
     } catch (err) { console.error("History Error:", err); }
   };
 
-  const processTrade = (trade: TradeData, fetchedAt?: number) => {
-    const tradeTime = Math.floor(trade.t / 1000);
-    const candleInterval = timeframeRef.current; 
-    const candleTime = Math.floor(tradeTime / candleInterval) * candleInterval;
-
+      const processTrade = (trade: TradeData, fetchedAt?: number) => {
+        const tradeTime = Math.floor(trade.t / 1000);
+        const candleInterval = intervalRef.current; 
+        const candleTime = Math.floor(tradeTime / candleInterval) * candleInterval;
     // Prevent updates for data older than what we already have, as lightweight-charts 
     // requires strictly increasing or equal timestamps for update().
     if (candleTime < lastCandleTimeRef.current) {
@@ -871,9 +868,9 @@ function App() {
   };
 
       const handleZoomIn = () => {
-        const currentIndex = AVAILABLE_INTERVALS.findIndex(tf => tf.value === interval);
+        const currentIndex = AVAILABLE_INTERVALS.findIndex(tf => tf.value === chartInterval);
         if (currentIndex > 0) {
-          setInterval(AVAILABLE_INTERVALS[currentIndex - 1].value);
+          setChartInterval(AVAILABLE_INTERVALS[currentIndex - 1].value);
         } else if (chartRef.current) {
           const timeScale = chartRef.current.timeScale();
           const logicalRange = timeScale.getVisibleLogicalRange();
@@ -890,9 +887,9 @@ function App() {
       };
   
       const handleZoomOut = () => {
-        const currentIndex = AVAILABLE_INTERVALS.findIndex(tf => tf.value === interval);
+        const currentIndex = AVAILABLE_INTERVALS.findIndex(tf => tf.value === chartInterval);
         if (currentIndex < AVAILABLE_INTERVALS.length - 1) {
-          setInterval(AVAILABLE_INTERVALS[currentIndex + 1].value);
+          setChartInterval(AVAILABLE_INTERVALS[currentIndex + 1].value);
         } else if (chartRef.current) {
           const timeScale = chartRef.current.timeScale();
           const logicalRange = timeScale.getVisibleLogicalRange();
@@ -1018,9 +1015,9 @@ function App() {
                       <InputLabel id="interval-select-label" sx={{ color: COLORS.textSecondary, fontSize: '0.85rem' }}>Interval</InputLabel>
                       <Select
                         labelId="interval-select-label"
-                        value={interval}
+                        value={chartInterval}
                         label="Interval"
-                        onChange={(e) => setInterval(Number(e.target.value))}
+                        onChange={(e) => setChartInterval(Number(e.target.value))}
                         sx={{ color: COLORS.textPrimary, fontSize: '0.85rem', '.MuiOutlinedInput-notchedOutline': { borderColor: COLORS.borderLight } }}
                       >
                         {AVAILABLE_INTERVALS.map((tf) => (
