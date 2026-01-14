@@ -25,7 +25,7 @@ import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import theme, { UI_COLORS as COLORS } from './theme';
-import StockLegend from './components/StockLegend';
+import StockLegend, { StockLegendRef } from './components/StockLegend';
 
 // Types corresponding to backend
 interface TradeData {
@@ -39,7 +39,6 @@ interface BackendMessage {
   type: string;
   data: TradeData[];
   msg?: string;
-  fetched_at?: number; // Added for latency tracking
 }
 
 interface SymbolMetadata {
@@ -95,11 +94,7 @@ function App() {
   const isAutoScaleRef = useRef(true);
   const lastRangeRef = useRef<{ from: number, to: number } | null>(null);
   
-  // State for legend - replacement for innerHTML
-  const [legendData, setLegendData] = useState<{
-    candle: any;
-    mas: any;
-  }>({ candle: null, mas: {} });
+  const legendRef = useRef<StockLegendRef>(null);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const volumeContainerRef = useRef<HTMLDivElement>(null);
@@ -165,9 +160,9 @@ function App() {
     }
   }, [symbolMetadata, activeSymbol]);
 
-  // Legend Updater - Now uses React state
+  // Legend Updater - Now uses Ref for performance
   const updateLegendUI = (candle: any, _symbol: string, ma7?: number, ma25?: number, ma99?: number) => {
-    setLegendData({
+    legendRef.current?.update({
         candle,
         mas: { ma7, ma25, ma99 }
     });
@@ -1108,10 +1103,9 @@ function App() {
                     {/* Legend Overlay */}
                     <Box sx={{ position: 'absolute', top: 12, left: 12, zIndex: 10 }}>
                       <StockLegend 
+                        ref={legendRef}
                         symbol={activeSymbol}
                         metadata={symbolMetadata[activeSymbol]}
-                        candle={legendData.candle}
-                        mas={legendData.mas}
                       />
                     </Box>
                     <Box ref={chartContainerRef} sx={{ width: '100%', height: '100%' }} />

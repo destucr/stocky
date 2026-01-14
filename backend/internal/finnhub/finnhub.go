@@ -156,36 +156,30 @@ func (fc *FinnhubClient) listen() {
 	defer fc.conn.Close()
 	ctx := context.Background()
 	for {
-		_, message, err := fc.conn.ReadMessage()
+		_, message, err := fc.Conn.ReadMessage()
 		if err != nil {
 			slog.Error("Error reading from Finnhub WebSocket", "error", err)
 			return
 		}
 
-		// Use a decoder to handle multiple JSON objects in a single message frame
-		reader := strings.NewReader(string(message))
-		decoder := json.NewDecoder(reader)
-		
-		for decoder.More() {
-			var fMsg FinnhubMessage
-			if err := decoder.Decode(&fMsg); err == nil {
-				fMsg.FetchedAt = time.Now().UnixMilli() // Record fetch time
-				if fMsg.Type == "trade" {
-					for _, trade := range fMsg.Data {
-						slog.Debug("Trade received", "symbol", trade.Symbol, "price", trade.Price)
-						fc.MemStore.UpdatePrice(trade.Symbol, trade.Price, trade.Time)
-						go fc.DBStore.SaveTrade(ctx, trade.Symbol, trade.Price, trade.Volume, trade.Time)
+		// Direct broadcast of raw bytes to minimize marshaling latency
+		fc.Hub.Broadcast <- message
+
+		// Process in background for storage/memstore without blocking broadcast
+		go func(raw []byte) {
+			reader := strings.NewReader(string(raw))
+			decoder := json.NewDecoder(reader)
+			for decoder.More() {
+				var fMsg FinnhubMessage
+				if err := decoder.Decode(&fMsg); err == nil {
+					if fMsg.Type == "trade" {
+						for _, trade := range fMsg.Data {
+							fc.MemStore.UpdatePrice(trade.Symbol, trade.Price, trade.Time)
+							fc.DBStore.SaveTrade(ctx, trade.Symbol, trade.Price, trade.Volume, trade.Time)
+						}
 					}
 				}
-				
-				// Re-marshal each individual object to ensure valid single-JSON frames
-				if broadcastMsg, err := json.Marshal(fMsg); err == nil {
-					fc.Hub.Broadcast <- broadcastMsg
-				}
-			} else {
-				slog.Error("Failed to decode message part", "error", err)
-				break
 			}
-		}
+		}(message)
 	}
 }
