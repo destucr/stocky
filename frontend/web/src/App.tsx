@@ -97,6 +97,8 @@ function App() {
   
   const [brokenLogos, setBrokenLogos] = useState<Record<string, boolean>>({});
   const legendRef = useRef<StockLegendRef>(null);
+  const pendingTradeRef = useRef<TradeData | null>(null);
+  const rafIdRef = useRef<number | null>(null);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const volumeContainerRef = useRef<HTMLDivElement>(null);
@@ -773,77 +775,84 @@ function App() {
   };
 
   const processTrade = (trade: TradeData) => {
-    const tradeTime = Math.floor(trade.t / 1000);
-    const candleIntervalVal = intervalRef.current; 
-    const candleTime = Math.floor(tradeTime / candleIntervalVal) * candleIntervalVal;
-
-    if (candleTime < lastCandleTimeRef.current) return;
-
-    const isNewCandle = !currentCandleRef.current || candleTime > lastCandleTimeRef.current;
-
-    if (isNewCandle) {
-      if (currentCandleRef.current) {
-        candleHistoryRef.current.push({ 
-            time: currentCandleRef.current.time, 
-            close: currentCandleRef.current.close 
-        });
-        // Limit history size to 500 to keep MA calculations fast
-        if (candleHistoryRef.current.length > 500) candleHistoryRef.current.shift();
-      }
-
-      currentCandleRef.current = {
-        time: candleTime as Time,
-        open: trade.p, high: trade.p, low: trade.p, close: trade.p,
-        volume: trade.v,
-      };
-      lastCandleTimeRef.current = candleTime;
-    } else {
-      const c = currentCandleRef.current!;
-      c.high = Math.max(c.high, trade.p);
-      c.low = Math.min(c.low, trade.p);
-      c.close = trade.p;
-      c.volume += trade.v;
-    }
-
-    // High Performance MA calculation (Only for the latest point)
-    const calculateLastMA = (period: number, currentPrice: number) => {
-        const hist = candleHistoryRef.current;
-        const len = hist.length;
-        if (len + 1 < period) return null;
-        
-        let sum = currentPrice;
-        for (let i = 0; i < period - 1; i++) {
-            sum += hist[len - 1 - i].close;
-        }
-        return sum / period;
-    };
-
-    const v7 = calculateLastMA(7, trade.p);
-    const v25 = calculateLastMA(25, trade.p);
-    const v99 = calculateLastMA(99, trade.p);
-
-    // Single Frame UI Update
-    const time = candleTime as Time;
-    const price = trade.p;
+    pendingTradeRef.current = trade;
     
-    if (chartType === 'candlestick') {
-        seriesRef.current?.update(currentCandleRef.current!);
-    } else if (chartType === 'line') {
-        lineSeriesRef.current?.update({ time, value: price });
-    } else {
-        areaSeriesRef.current?.update({ time, value: price });
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        const currentTrade = pendingTradeRef.current;
+        if (!currentTrade) return;
+
+        const tradeTime = Math.floor(currentTrade.t / 1000);
+        const candleIntervalVal = intervalRef.current; 
+        const candleTime = Math.floor(tradeTime / candleIntervalVal) * candleIntervalVal;
+
+        if (candleTime < lastCandleTimeRef.current) return;
+
+        const isNewCandle = !currentCandleRef.current || candleTime > lastCandleTimeRef.current;
+
+        if (isNewCandle) {
+          if (currentCandleRef.current) {
+            candleHistoryRef.current.push({ 
+                time: currentCandleRef.current.time, 
+                close: currentCandleRef.current.close 
+            });
+            if (candleHistoryRef.current.length > 500) candleHistoryRef.current.shift();
+          }
+
+          currentCandleRef.current = {
+            time: candleTime as Time,
+            open: currentTrade.p, high: currentTrade.p, low: currentTrade.p, close: currentTrade.p,
+            volume: currentTrade.v,
+          };
+          lastCandleTimeRef.current = candleTime;
+        } else {
+          const c = currentCandleRef.current!;
+          c.high = Math.max(c.high, currentTrade.p);
+          c.low = Math.min(c.low, currentTrade.p);
+          c.close = currentTrade.p;
+          c.volume += currentTrade.v;
+        }
+
+        const v7 = calculateLastMA(7, currentTrade.p);
+        const v25 = calculateLastMA(25, currentTrade.p);
+        const v99 = calculateLastMA(99, currentTrade.p);
+
+        const time = candleTime as Time;
+        const price = currentTrade.p;
+        
+        if (chartType === 'candlestick') {
+            seriesRef.current?.update(currentCandleRef.current!);
+        } else if (chartType === 'line') {
+            lineSeriesRef.current?.update({ time, value: price });
+        } else {
+            areaSeriesRef.current?.update({ time, value: price });
+        }
+
+        volumeSeriesRef.current?.update({
+            time, value: currentCandleRef.current!.volume,
+            color: currentCandleRef.current!.close >= currentCandleRef.current!.open ? COLORS.success : COLORS.danger
+        });
+
+        if (v7 !== null) ma7SeriesRef.current?.update({ time, value: v7 });
+        if (v25 !== null) ma25SeriesRef.current?.update({ time, value: v25 });
+        if (v99 !== null) ma99SeriesRef.current?.update({ time, value: v99 });
+
+        updateLegendUI(currentCandleRef.current, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined);
+      });
     }
+  };
 
-    volumeSeriesRef.current?.update({
-        time, value: currentCandleRef.current!.volume,
-        color: currentCandleRef.current!.close >= currentCandleRef.current!.open ? COLORS.success : COLORS.danger
-    });
-
-    if (v7 !== null) ma7SeriesRef.current?.update({ time, value: v7 });
-    if (v25 !== null) ma25SeriesRef.current?.update({ time, value: v25 });
-    if (v99 !== null) ma99SeriesRef.current?.update({ time, value: v99 });
-
-    updateLegendUI(currentCandleRef.current, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined);
+  const calculateLastMA = (period: number, currentPrice: number) => {
+      const hist = candleHistoryRef.current;
+      const len = hist.length;
+      if (len + 1 < period) return null;
+      
+      let sum = currentPrice;
+      for (let i = 0; i < period - 1; i++) {
+          sum += hist[len - 1 - i].close;
+      }
+      return sum / period;
   };
 
       const handleZoomIn = () => {

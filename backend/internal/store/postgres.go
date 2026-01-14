@@ -9,7 +9,15 @@ import (
 )
 
 type PostgresStore struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	tradeCh chan tradeJob
+}
+
+type tradeJob struct {
+	symbol string
+	price  float64
+	volume float64
+	ts     int64
 }
 
 func NewPostgresStore(ctx context.Context, connString string) (*PostgresStore, error) {
@@ -23,12 +31,45 @@ func NewPostgresStore(ctx context.Context, connString string) (*PostgresStore, e
 		return nil, err
 	}
 
-	s := &PostgresStore{pool: pool}
+	s := &PostgresStore{
+		pool:    pool,
+		tradeCh: make(chan tradeJob, 10000), // Large buffer for trade bursts
+	}
 	if err := s.InitSchema(ctx); err != nil {
 		return nil, err
 	}
 
+	// Start DB worker pool (4 workers is usually enough for most DBs)
+	for i := 0; i < 4; i++ {
+		go s.tradeWorker()
+	}
+
 	return s, nil
+}
+
+func (s *PostgresStore) tradeWorker() {
+	ctx := context.Background()
+	for job := range s.tradeCh {
+		t := time.UnixMilli(job.ts)
+		
+		// 1. Insert into history table
+		queryTrade := `INSERT INTO trades (symbol, price, volume, timestamp) VALUES ($1, $2, $3, $4)`
+		_, err := s.pool.Exec(ctx, queryTrade, job.symbol, job.price, job.volume, t)
+		if err != nil {
+			slog.Error("Failed to save trade to postgres", "error", err, "symbol", job.symbol)
+		}
+
+		// 2. Upsert into latest prices table
+		queryLatest := `
+			INSERT INTO latest_prices (symbol, price, timestamp) 
+			VALUES ($1, $2, $3)
+			ON CONFLICT (symbol) DO UPDATE 
+			SET price = EXCLUDED.price, timestamp = EXCLUDED.timestamp`
+		_, err = s.pool.Exec(ctx, queryLatest, job.symbol, job.price, t)
+		if err != nil {
+			slog.Error("Failed to update latest price in postgres", "error", err, "symbol", job.symbol)
+		}
+	}
 }
 
 func (s *PostgresStore) InitSchema(ctx context.Context) error {
@@ -66,24 +107,10 @@ func (s *PostgresStore) InitSchema(ctx context.Context) error {
 }
 
 func (s *PostgresStore) SaveTrade(ctx context.Context, symbol string, price, volume float64, ts int64) {
-	t := time.UnixMilli(ts)
-	
-	// 1. Insert into history table
-	queryTrade := `INSERT INTO trades (symbol, price, volume, timestamp) VALUES ($1, $2, $3, $4)`
-	_, err := s.pool.Exec(ctx, queryTrade, symbol, price, volume, t)
-	if err != nil {
-		slog.Error("Failed to save trade to postgres", "error", err, "symbol", symbol)
-	}
-
-	// 2. Upsert into latest prices table
-	queryLatest := `
-		INSERT INTO latest_prices (symbol, price, timestamp) 
-		VALUES ($1, $2, $3)
-		ON CONFLICT (symbol) DO UPDATE 
-		SET price = EXCLUDED.price, timestamp = EXCLUDED.timestamp`
-	_, err = s.pool.Exec(ctx, queryLatest, symbol, price, t)
-	if err != nil {
-		slog.Error("Failed to update latest price in postgres", "error", err, "symbol", symbol)
+	select {
+	case s.tradeCh <- tradeJob{symbol, price, volume, ts}:
+	default:
+		slog.Warn("DB trade channel full, dropping trade for persistence", "symbol", symbol)
 	}
 }
 

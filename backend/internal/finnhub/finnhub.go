@@ -163,23 +163,26 @@ func (fc *FinnhubClient) listen() {
 		}
 
 		// Direct broadcast of raw bytes to minimize marshaling latency
-		fc.Hub.Broadcast <- message
+		// We use a select with default to avoid blocking if the hub is busy
+		select {
+		case fc.Hub.Broadcast <- message:
+		default:
+			slog.Warn("Broadcast channel full, skipping message for realtime")
+		}
 
-		// Process in background for storage/memstore without blocking broadcast
-		go func(raw []byte) {
-			reader := strings.NewReader(string(raw))
-			decoder := json.NewDecoder(reader)
-			for decoder.More() {
-				var fMsg FinnhubMessage
-				if err := decoder.Decode(&fMsg); err == nil {
-					if fMsg.Type == "trade" {
-						for _, trade := range fMsg.Data {
-							fc.MemStore.UpdatePrice(trade.Symbol, trade.Price, trade.Time)
-							fc.DBStore.SaveTrade(ctx, trade.Symbol, trade.Price, trade.Volume, trade.Time)
-						}
+		// Process for storage/memstore without blocking broadcast
+		reader := strings.NewReader(string(message))
+		decoder := json.NewDecoder(reader)
+		for decoder.More() {
+			var fMsg FinnhubMessage
+			if err := decoder.Decode(&fMsg); err == nil {
+				if fMsg.Type == "trade" {
+					for _, trade := range fMsg.Data {
+						fc.MemStore.UpdatePrice(trade.Symbol, trade.Price, trade.Time)
+						fc.DBStore.SaveTrade(ctx, trade.Symbol, trade.Price, trade.Volume, trade.Time)
 					}
 				}
 			}
-		}(message)
+		}
 	}
 }
