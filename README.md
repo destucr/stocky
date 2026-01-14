@@ -18,6 +18,20 @@ WebSocket streaming from Finnhub with PostgreSQL persistence. Frontend uses dire
 
 ## Setup
 
+### Option 1: Docker Compose (Recommended)
+
+```bash
+git clone https://github.com/destucr/stocky.git
+cd stocky
+cp .env.example .env
+# Edit .env and add your FINNHUB_API_KEY
+docker-compose up
+```
+
+Open `localhost:5173` in your browser.
+
+### Option 2: Manual Setup
+
 **Prerequisites:** Go 1.24+, Node.js, PostgreSQL
 
 **1. Clone the repository**
