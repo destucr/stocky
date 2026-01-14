@@ -69,7 +69,7 @@ const calculateMA = (data: any[], period: number) => {
     return maData;
 };
 
-const AVAILABLE_TIMEFRAMES = [
+const AVAILABLE_INTERVALS = [
   { label: '1 Second', value: 1 },
   { label: '5 Seconds', value: 5 },
   { label: '10 Seconds', value: 10 },
@@ -87,8 +87,8 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [chartType, setChartType] = useState<'candlestick' | 'line' | 'area'>('candlestick');
   const [isLogScale, setIsLogScale] = useState(false);
-  const [timeframe, setTimeframe] = useState<number>(60);
-  const timeframeRef = useRef(timeframe);
+  const [interval, setInterval] = useState<number>(60);
+  const intervalRef = useRef(interval);
   const lastSymbolRef = useRef<string>('');
   const [isAutoScale, setIsAutoScale] = useState(true);
   const lastPriceRef = useRef<number | null>(null);
@@ -122,10 +122,10 @@ function App() {
   const ma25HistoryRef = useRef<any[]>([]);
   const ma99HistoryRef = useRef<any[]>([]);
 
-  // Sync timeframeRef
+  // Sync intervalRef
   useEffect(() => {
-    timeframeRef.current = timeframe;
-  }, [timeframe]);
+    intervalRef.current = interval;
+  }, [interval]);
 
   // Fetch metadata on mount
   useEffect(() => {
@@ -580,41 +580,41 @@ function App() {
     }
   }, [availableSymbols, activeSymbol]);
 
-  useEffect(() => {
-    // Reset building state when symbol or timeframe changes
-    currentCandleRef.current = null;
-    lastCandleTimeRef.current = 0;
-    candleHistoryRef.current = [];
-    ma7HistoryRef.current = [];
-    ma25HistoryRef.current = [];
-    ma99HistoryRef.current = [];
-
-    // Restore auto-scale on changes
-    if (chartRef.current) {
-        chartRef.current.priceScale('right').applyOptions({ autoScale: true });
-        setIsAutoScale(true);
-        isAutoScaleRef.current = true;
-    }
-
-    // If symbol changed, we MUST clear everything immediately to avoid mixing symbols
-    if (activeSymbol && activeSymbol !== lastSymbolRef.current) {
-      if (seriesRef.current) {
-        seriesRef.current.setData([]);
-        lineSeriesRef.current?.setData([]);
-        volumeSeriesRef.current?.setData([]);
-        ma7SeriesRef.current?.setData([]);
-        ma25SeriesRef.current?.setData([]);
-        ma99SeriesRef.current?.setData([]);
-      }
-      lastSymbolRef.current = activeSymbol;
-    }
-
-    // Always fetch new history for the selected timeframe
-    if (activeSymbol) {
-      fetchHistory(activeSymbol, timeframe);
-    }
-  }, [activeSymbol, timeframe]);
-
+      useEffect(() => {
+        // Reset building state when symbol or interval changes
+        currentCandleRef.current = null;
+        lastCandleTimeRef.current = 0;
+        candleHistoryRef.current = [];
+        ma7HistoryRef.current = [];
+        ma25HistoryRef.current = [];
+        ma99HistoryRef.current = [];
+    
+        // Restore auto-scale on changes
+        if (chartRef.current) {
+            chartRef.current.priceScale('right').applyOptions({ autoScale: true });
+            setIsAutoScale(true);
+            isAutoScaleRef.current = true;
+        }
+    
+        // If symbol changed, we MUST clear everything immediately to avoid mixing symbols
+        if (activeSymbol && activeSymbol !== lastSymbolRef.current) {
+          if (seriesRef.current) {
+            seriesRef.current.setData([]);
+            lineSeriesRef.current?.setData([]);
+            areaSeriesRef.current?.setData([]);
+            volumeSeriesRef.current?.setData([]);
+            ma7SeriesRef.current?.setData([]);
+            ma25SeriesRef.current?.setData([]);
+            ma99SeriesRef.current?.setData([]);
+          }
+          lastSymbolRef.current = activeSymbol;
+        }
+    
+        // Always fetch new history for the selected interval
+        if (activeSymbol) {
+          fetchHistory(activeSymbol, interval);
+        }
+      }, [activeSymbol, interval]);
   const handleResetScale = () => {
     if (chartRef.current) {
       const priceScale = chartRef.current.priceScale('right');
@@ -871,9 +871,9 @@ function App() {
   };
 
       const handleZoomIn = () => {
-        const currentIndex = AVAILABLE_TIMEFRAMES.findIndex(tf => tf.value === timeframe);
+        const currentIndex = AVAILABLE_INTERVALS.findIndex(tf => tf.value === interval);
         if (currentIndex > 0) {
-          setTimeframe(AVAILABLE_TIMEFRAMES[currentIndex - 1].value);
+          setInterval(AVAILABLE_INTERVALS[currentIndex - 1].value);
         } else if (chartRef.current) {
           const timeScale = chartRef.current.timeScale();
           const logicalRange = timeScale.getVisibleLogicalRange();
@@ -890,9 +890,9 @@ function App() {
       };
   
       const handleZoomOut = () => {
-        const currentIndex = AVAILABLE_TIMEFRAMES.findIndex(tf => tf.value === timeframe);
-        if (currentIndex < AVAILABLE_TIMEFRAMES.length - 1) {
-          setTimeframe(AVAILABLE_TIMEFRAMES[currentIndex + 1].value);
+        const currentIndex = AVAILABLE_INTERVALS.findIndex(tf => tf.value === interval);
+        if (currentIndex < AVAILABLE_INTERVALS.length - 1) {
+          setInterval(AVAILABLE_INTERVALS[currentIndex + 1].value);
         } else if (chartRef.current) {
           const timeScale = chartRef.current.timeScale();
           const logicalRange = timeScale.getVisibleLogicalRange();
@@ -1015,15 +1015,15 @@ function App() {
                   </FormControl>
                   
                   <FormControl variant="outlined" size="small" sx={{ minWidth: 120 }}>
-                      <InputLabel id="timeframe-select-label" sx={{ color: COLORS.textSecondary, fontSize: '0.85rem' }}>Timeframe</InputLabel>
+                      <InputLabel id="interval-select-label" sx={{ color: COLORS.textSecondary, fontSize: '0.85rem' }}>Interval</InputLabel>
                       <Select
-                        labelId="timeframe-select-label"
-                        value={timeframe}
-                        label="Timeframe"
-                        onChange={(e) => setTimeframe(Number(e.target.value))}
+                        labelId="interval-select-label"
+                        value={interval}
+                        label="Interval"
+                        onChange={(e) => setInterval(Number(e.target.value))}
                         sx={{ color: COLORS.textPrimary, fontSize: '0.85rem', '.MuiOutlinedInput-notchedOutline': { borderColor: COLORS.borderLight } }}
                       >
-                        {AVAILABLE_TIMEFRAMES.map((tf) => (
+                        {AVAILABLE_INTERVALS.map((tf) => (
                           <MenuItem key={tf.value} value={tf.value} sx={{ fontSize: '0.85rem' }}>{tf.label}</MenuItem>
                         ))}
                       </Select>
