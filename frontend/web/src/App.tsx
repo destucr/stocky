@@ -975,67 +975,53 @@ function App() {
                </Box>
             </Box>
 
-            {/* Scrollable Viewport for Sunset Effect */}
+            {/* Main Chart Area - Single Screen Viewport */}
             <Box 
-              ref={mainScrollRef}
               sx={{ 
                 flexGrow: 1, 
                 width: '100%', 
+                display: 'flex',
+                flexDirection: 'column',
                 position: 'relative',
-                overflowY: 'auto', 
-                overflowX: 'hidden',
+                overflow: 'hidden',
                 bgcolor: COLORS.background,
-                '&::-webkit-scrollbar': { display: 'none' },
-                msOverflowStyle: 'none',
-                scrollbarWidth: 'none',
               }} 
             >
-               {/* 1. Sizer Content */}
-               <Box sx={{ height: '150%', width: '100%', position: 'relative' }}>
-                  
-                  {/* 2. Price Chart Wrapper (Slides Behind) */}
-                  <Box 
-                    ref={priceWrapperRef}
-                    sx={{ 
-                        position: 'sticky', 
-                        top: 0, 
-                        width: '100%', 
-                        height: 'calc(100% - 120px)', // Price fills viewport minus volume height
-                        zIndex: 1,
-                        willChange: 'transform',
-                        transition: 'opacity 0.1s ease-out'
-                    }}
-                  >
-                     {/* Legend Overlay */}
-                     <Box sx={{ position: 'absolute', top: 12, left: 12, zIndex: 10 }}>
-                       <StockLegend 
-                          symbol={activeSymbol}
-                          metadata={symbolMetadata[activeSymbol]}
-                          candle={legendData.candle}
-                          mas={legendData.mas}
-                       />
-                     </Box>
-                     <Box ref={chartContainerRef} sx={{ width: '100%', height: '100%' }} />
-                  </Box>
+                {/* Price Chart Wrapper */}
+                <Box 
+                  sx={{ 
+                      flexGrow: 1,
+                      width: '100%', 
+                      position: 'relative',
+                      zIndex: 1,
+                  }}
+                >
+                    {/* Legend Overlay */}
+                    <Box sx={{ position: 'absolute', top: 12, left: 12, zIndex: 10 }}>
+                      <StockLegend 
+                        symbol={activeSymbol}
+                        metadata={symbolMetadata[activeSymbol]}
+                        candle={legendData.candle}
+                        mas={legendData.mas}
+                      />
+                    </Box>
+                    <Box ref={chartContainerRef} sx={{ width: '100%', height: '100%' }} />
+                </Box>
 
-                  {/* 3. Volume Foreground Pane - Touching Price Layer */}
-                  <Box 
-                    sx={{ 
-                        position: 'sticky', 
-                        bottom: 0, 
-                        width: '100%', 
-                        height: 120, 
-                        zIndex: 2,
-                        bgcolor: COLORS.surface,
-                        borderTop: `1px solid ${COLORS.border}`,
-                        boxShadow: '0 -10px 30px rgba(0,0,0,0.6)',
-                        overflow: 'hidden'
-                    }}
-                  >
-                     <Box ref={volumeContainerRef} sx={{ width: '100%', height: '100%' }} />
-                  </Box>
-
-               </Box>
+                {/* Volume Pane */}
+                <Box 
+                  sx={{ 
+                      width: '100%', 
+                      height: 120, 
+                      zIndex: 2,
+                      bgcolor: COLORS.surface,
+                      borderTop: `1px solid ${COLORS.border}`,
+                      boxShadow: '0 -10px 30px rgba(0,0,0,0.4)',
+                      overflow: 'hidden'
+                  }}
+                >
+                    <Box ref={volumeContainerRef} sx={{ width: '100%', height: '100%' }} />
+                </Box>
             </Box>
             
           </Paper>
