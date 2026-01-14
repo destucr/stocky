@@ -80,7 +80,7 @@ func (fc *FinnhubClient) fetchAllAvailableSymbols() []string {
 	
 	hotSymbols := []string{
 		"BINANCE:BTCUSDT", "BINANCE:ETHUSDT", "BINANCE:SOLUSDT", 
-		"OANDA:EUR_USD", "OANDA:USD_JPY", "OANDA:GBP_USD",
+		"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META",
 	}
 	allSymbols = append(allSymbols, hotSymbols...)
 
@@ -107,7 +107,7 @@ func (fc *FinnhubClient) fetchAllAvailableSymbols() []string {
 
 	go func() {
 		defer wg.Done()
-		res, _, err := fc.sdk.ForexSymbols(ctx).Exchange("OANDA").Execute()
+		res, _, err := fc.sdk.StockSymbols(ctx).Exchange("US").Execute()
 		if err == nil {
 			mu.Lock()
 			for _, s := range res {

@@ -104,29 +104,33 @@ func main() {
 						"name": "Polkadot / Tether",
 						"logo": "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
 					},
-					"OANDA:EUR_USD": {
-						"name": "Euro / US Dollar",
-						"logo": "https://flagcdn.com/w80/eu.png",
+					"AAPL": {
+						"name": "Apple Inc.",
+						"logo": "https://logo.clearbit.com/apple.com",
 					},
-					"OANDA:GBP_USD": {
-						"name": "British Pound / US Dollar",
-						"logo": "https://flagcdn.com/w80/gb.png",
+					"MSFT": {
+						"name": "Microsoft Corporation",
+						"logo": "https://logo.clearbit.com/microsoft.com",
 					},
-					"OANDA:USD_JPY": {
-						"name": "US Dollar / Japanese Yen",
-						"logo": "https://flagcdn.com/w80/jp.png",
+					"GOOGL": {
+						"name": "Alphabet Inc.",
+						"logo": "https://logo.clearbit.com/google.com",
 					},
-					"OANDA:AUD_USD": {
-						"name": "Australian Dollar / US Dollar",
-						"logo": "https://flagcdn.com/w80/au.png",
+					"AMZN": {
+						"name": "Amazon.com, Inc.",
+						"logo": "https://logo.clearbit.com/amazon.com",
 					},
-					"OANDA:USD_CAD": {
-						"name": "US Dollar / Canadian Dollar",
-						"logo": "https://flagcdn.com/w80/ca.png",
+					"TSLA": {
+						"name": "Tesla, Inc.",
+						"logo": "https://logo.clearbit.com/tesla.com",
 					},
-					"OANDA:USD_CHF": {
-						"name": "US Dollar / Swiss Franc",
-						"logo": "https://flagcdn.com/w80/ch.png",
+					"NVDA": {
+						"name": "NVIDIA Corporation",
+						"logo": "https://logo.clearbit.com/nvidia.com",
+					},
+					"META": {
+						"name": "Meta Platforms, Inc.",
+						"logo": "https://logo.clearbit.com/meta.com",
 					},
 				}
 				w.Header().Set("Content-Type", "application/json")
