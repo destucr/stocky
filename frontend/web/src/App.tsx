@@ -316,19 +316,21 @@ function App() {
       priceChart.subscribeCrosshairMove(handleCrosshair);
 
       // --- Bidirectional Crosshair Sync ---
-      let isSyncingCrosshair = false;
       const syncCrosshair = (sourceChart: IChartApi, targetChart: IChartApi, targetSeries: ISeriesApi<any>) => {
         sourceChart.subscribeCrosshairMove((param) => {
-          if (isSyncingCrosshair) return;
-          isSyncingCrosshair = true;
-          if (!param.time) {
-            targetChart.clearCrosshairPosition();
-          } else {
-            // We use a large price value to keep the horizontal line out of view 
-            // if we only want vertical sync, but here we just want to sync the time.
-            targetChart.setCrosshairPosition(0, param.time, targetSeries);
+          if (isSyncingRef.current) return;
+          isSyncingRef.current = true;
+          try {
+            if (!param.time) {
+              targetChart.clearCrosshairPosition();
+            } else {
+              targetChart.setCrosshairPosition(0, param.time, targetSeries);
+            }
+          } catch (err) {
+            // Ignore crosshair sync errors
+          } finally {
+            isSyncingRef.current = false;
           }
-          isSyncingCrosshair = false;
         });
       };
 
@@ -647,14 +649,20 @@ function App() {
             lastRangeRef.current = { from: min - padding, to: max + padding };
         }
       } else {
-        // Clear if no data
-        seriesRef.current?.setData([]);
-        lineSeriesRef.current?.setData([]);
-        volumeSeriesRef.current?.setData([]);
-        ma7SeriesRef.current?.setData([]);
-        ma25SeriesRef.current?.setData([]);
-        ma99SeriesRef.current?.setData([]);
-        lastRangeRef.current = null;
+        // Disable sync while clearing data
+        isSyncingRef.current = true;
+        try {
+            // Clear if no data
+            seriesRef.current?.setData([]);
+            lineSeriesRef.current?.setData([]);
+            volumeSeriesRef.current?.setData([]);
+            ma7SeriesRef.current?.setData([]);
+            ma25SeriesRef.current?.setData([]);
+            ma99SeriesRef.current?.setData([]);
+            lastRangeRef.current = null;
+        } finally {
+            isSyncingRef.current = false;
+        }
       }
     } catch (err) { console.error("History Error:", err); }
   };
