@@ -208,11 +208,13 @@ function App() {
             borderVisible: false,
             shiftVisibleRangeOnNewBar: true,
             rightOffset: 150,
+            barSpacing: 10,
         },
         rightPriceScale: { 
             borderColor: COLORS.borderLight, 
             autoScale: true, 
-            scaleMargins: { top: 0.1, bottom: 0 } // No margin at bottom
+            scaleMargins: { top: 0.1, bottom: 0 }, // No margin at bottom
+            minimumWidth: 80, // Fixed width to ensure alignment
         },
       });
 
@@ -233,6 +235,7 @@ function App() {
           borderColor: COLORS.borderLight,
           autoScale: true,
           scaleMargins: { top: 0, bottom: 0 }, // Content fills the pane
+          minimumWidth: 80, // Matches price chart for perfect alignment
         },
       });
 
