@@ -93,6 +93,7 @@ function App() {
   const [isAutoScale, setIsAutoScale] = useState(true);
   const lastPriceRef = useRef<number | null>(null);
   const lastRealPriceRef = useRef<number | null>(null);
+  const lastTickColorRef = useRef<string>('');
   const isAutoScaleRef = useRef(true);
   const lastRangeRef = useRef<{ from: number, to: number } | null>(null);
   
@@ -575,12 +576,14 @@ function App() {
                   return newSymbols.length > 0 ? [...prev, ...newSymbols].sort() : prev;
                 });
 
-                // Process all trades in the message but only update chart for the active symbol
-                const trades = message.data.filter(t => t.s === activeSymbolRef.current);
-                if (trades.length > 0) {
-                    trades.forEach(trade => processTrade(trade));
-                }
-              }
+                            // Process all trades in the message but only update chart for the active symbol once
+                            const trades = message.data.filter(t => t.s === activeSymbolRef.current);
+                            if (trades.length > 0) {
+                                // 1. Process all trade data first (CPU only)
+                                trades.forEach(trade => processTrade(trade));
+                                // 2. Draw the final state once (Heavy DOM/Canvas work)
+                                drawChartUpdate(trades[trades.length - 1].p);
+                            }              }
             } catch (innerErr) {
               console.error("Single frame parse error:", innerErr, "Raw string:", jsonStr);
             }
@@ -794,6 +797,7 @@ function App() {
   };
 
   const processTrade = (trade: TradeData) => {
+    // This is now just a data processor
     const tradeTime = Math.floor(trade.t / 1000);
     const candleIntervalVal = intervalRef.current; 
     const candleTime = Math.floor(tradeTime / candleIntervalVal) * candleIntervalVal;
@@ -824,50 +828,58 @@ function App() {
       c.close = trade.p;
       c.volume += trade.v;
     }
+  };
 
-    const v7 = calculateLastMA(7, trade.p);
-    const v25 = calculateLastMA(25, trade.p);
-    const v99 = calculateLastMA(99, trade.p);
-
-    const time = candleTime as Time;
-    const price = trade.p;
+  const drawChartUpdate = (lastPrice: number) => {
+    if (!currentCandleRef.current) return;
     
-    // Determine tick color based on price change (proxy for buy/sell side)
+    const candle = currentCandleRef.current;
+    const time = candle.time;
+    
+    // Calculate color once
     let tickColor = COLORS.textPrimary;
     if (lastRealPriceRef.current !== null) {
-        if (price > lastRealPriceRef.current) tickColor = COLORS.success;
-        else if (price < lastRealPriceRef.current) tickColor = COLORS.danger;
+        if (lastPrice > lastRealPriceRef.current) tickColor = COLORS.success;
+        else if (lastPrice < lastRealPriceRef.current) tickColor = COLORS.danger;
     }
-    lastRealPriceRef.current = price;
+    lastRealPriceRef.current = lastPrice;
 
-    // Instant Chart Update
+    // Update only what's visible
     if (chartType === 'candlestick') {
-        if (seriesRef.current) {
-            seriesRef.current.update(currentCandleRef.current!);
-            seriesRef.current.applyOptions({ priceLineColor: tickColor });
+        seriesRef.current?.update(candle);
+        // Only apply options if color changed to avoid heavy chart re-calculates
+        if (tickColor !== lastTickColorRef.current) {
+            seriesRef.current?.applyOptions({ priceLineColor: tickColor });
+            lastTickColorRef.current = tickColor;
         }
     } else if (chartType === 'line') {
-        if (lineSeriesRef.current) {
-            lineSeriesRef.current.update({ time, value: price });
-            lineSeriesRef.current.applyOptions({ priceLineColor: tickColor });
+        lineSeriesRef.current?.update({ time, value: lastPrice });
+        if (tickColor !== lastTickColorRef.current) {
+            lineSeriesRef.current?.applyOptions({ priceLineColor: tickColor });
+            lastTickColorRef.current = tickColor;
         }
     } else {
-        if (areaSeriesRef.current) {
-            areaSeriesRef.current.update({ time, value: price });
-            areaSeriesRef.current.applyOptions({ priceLineColor: tickColor });
+        areaSeriesRef.current?.update({ time, value: lastPrice });
+        if (tickColor !== lastTickColorRef.current) {
+            areaSeriesRef.current?.applyOptions({ priceLineColor: tickColor });
+            lastTickColorRef.current = tickColor;
         }
     }
 
     volumeSeriesRef.current?.update({
-        time, value: currentCandleRef.current!.volume,
-        color: currentCandleRef.current!.close >= currentCandleRef.current!.open ? COLORS.success : COLORS.danger
+        time, value: candle.volume,
+        color: candle.close >= candle.open ? COLORS.success : COLORS.danger
     });
+
+    const v7 = calculateLastMA(7, lastPrice);
+    const v25 = calculateLastMA(25, lastPrice);
+    const v99 = calculateLastMA(99, lastPrice);
 
     if (v7 !== null) ma7SeriesRef.current?.update({ time, value: v7 });
     if (v25 !== null) ma25SeriesRef.current?.update({ time, value: v25 });
     if (v99 !== null) ma99SeriesRef.current?.update({ time, value: v99 });
 
-    updateLegendUI(currentCandleRef.current, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined, tickColor);
+    updateLegendUI(candle, activeSymbolRef.current, v7 ?? undefined, v25 ?? undefined, v99 ?? undefined, tickColor);
   };
 
   const calculateLastMA = (period: number, currentPrice: number) => {
