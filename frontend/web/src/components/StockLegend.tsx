@@ -10,7 +10,7 @@ interface StockLegendProps {
 }
 
 export interface StockLegendRef {
-  update: (data: { candle: any; mas: any; tickColor?: string }) => void;
+  update: (data: { candle: any; mas: any; tickColor?: string; livePrice?: number }) => void;
 }
 
 const formatVal = (val: number | null | undefined) => {
@@ -21,6 +21,7 @@ const formatVal = (val: number | null | undefined) => {
 };
 
 const StockLegend = forwardRef<StockLegendRef, StockLegendProps>(({ symbol, metadata }, ref) => {
+  const livePriceRef = useRef<HTMLElement>(null);
   const openRef = useRef<HTMLElement>(null);
   const highRef = useRef<HTMLElement>(null);
   const lowRef = useRef<HTMLElement>(null);
@@ -32,7 +33,11 @@ const StockLegend = forwardRef<StockLegendRef, StockLegendProps>(({ symbol, meta
   const [imgError, setImgError] = React.useState(false);
 
   useImperativeHandle(ref, () => ({
-    update: ({ candle, mas, tickColor }) => {
+    update: ({ candle, mas, tickColor, livePrice }) => {
+      if (livePriceRef.current && livePrice !== undefined && livePrice !== null) {
+          livePriceRef.current.innerText = formatVal(livePrice);
+      }
+      
       if (!candle) return;
       const isUp = candle.close >= candle.open;
       const candleColor = isUp ? UI_COLORS.success : UI_COLORS.danger;
@@ -87,6 +92,7 @@ const StockLegend = forwardRef<StockLegendRef, StockLegendProps>(({ symbol, meta
         </Box>
 
         <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column' }}><Typography sx={labelStyle}>Price</Typography><Typography ref={livePriceRef} sx={{ ...valStyle, color: UI_COLORS.accent }}>-</Typography></Box>
           <Box sx={{ display: 'flex', flexDirection: 'column' }}><Typography sx={labelStyle}>Open</Typography><Typography ref={openRef} sx={valStyle}>-</Typography></Box>
           <Box sx={{ display: 'flex', flexDirection: 'column' }}><Typography sx={labelStyle}>High</Typography><Typography ref={highRef} sx={valStyle}>-</Typography></Box>
           <Box sx={{ display: 'flex', flexDirection: 'column' }}><Typography sx={labelStyle}>Low</Typography><Typography ref={lowRef} sx={valStyle}>-</Typography></Box>

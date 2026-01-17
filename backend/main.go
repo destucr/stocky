@@ -262,6 +262,63 @@ func main() {
 		json.NewEncoder(w).Encode(history)
 	})
 
+	// API: Get latest signal for a symbol
+	mux.HandleFunc("/api/signal", func(w http.ResponseWriter, r *http.Request) {
+		symbol := r.URL.Query().Get("symbol")
+		if symbol == "" {
+			http.Error(w, "symbol query parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		signal, err := dbStore.GetLatestSignal(context.Background(), symbol)
+		if err != nil {
+			// Check if it's a "no rows" error, usually pgx returns a specific error but for now standard error handling
+			slog.Debug("No signal found or DB error", "error", err, "symbol", symbol)
+			// Return empty JSON or 404? Empty JSON is better for frontend handling
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(signal)
+	})
+
+	// Internal API: Broadcast signal (called by Python Agent)
+	mux.HandleFunc("/api/internal/broadcast_signal", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		// Wrap in a standard message format to distinguish from trade data
+		msg := map[string]interface{}{
+			"type": "signal",
+			"data": payload,
+		}
+
+		bytes, err := json.Marshal(msg)
+		if err != nil {
+			http.Error(w, "JSON Marshal error", http.StatusInternalServerError)
+			return
+		}
+
+		// Non-blocking send to hub
+		select {
+		case hub.Broadcast <- bytes:
+			w.WriteHeader(http.StatusOK)
+		default:
+			slog.Warn("Hub broadcast channel full, dropping signal")
+			http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		}
+	})
+
 	// Global CORS and Logging Middleware
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

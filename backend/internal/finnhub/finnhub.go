@@ -77,9 +77,15 @@ func (fc *FinnhubClient) Connect() {
 
 func (fc *FinnhubClient) fetchAllAvailableSymbols() []string {
 	var allSymbols []string
-	
+
+	// Priority symbols for the AI trading agent - these MUST be subscribed
 	hotSymbols := []string{
-		"BINANCE:BTCUSDT", "BINANCE:ETHUSDT", "BINANCE:SOLUSDT", 
+		// Crypto trading symbols (agent uses these)
+		"BINANCE:BTCUSDT", "BINANCE:ETHUSDT", "BINANCE:SOLUSDT",
+		"BINANCE:BNBUSDT", "BINANCE:ADAUSDT", "BINANCE:XRPUSDT",
+		"BINANCE:DOTUSDT", "BINANCE:DOGEUSDT", "BINANCE:AVAXUSDT",
+		"BINANCE:LINKUSDT", "BINANCE:MATICUSDT", "BINANCE:LTCUSDT",
+		// US stocks
 		"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META",
 	}
 	allSymbols = append(allSymbols, hotSymbols...)
@@ -89,7 +95,7 @@ func (fc *FinnhubClient) fetchAllAvailableSymbols() []string {
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	
+
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
@@ -132,8 +138,10 @@ func (fc *FinnhubClient) fetchAllAvailableSymbols() []string {
 
 	const maxAllowed = 50
 	if len(unique) > maxAllowed {
-		return unique[:maxAllowed]
+		slog.Info("Limiting subscriptions", "total_available", len(unique), "max_allowed", maxAllowed)
+		unique = unique[:maxAllowed]
 	}
+	slog.Info("Symbols to subscribe", "symbols", unique)
 	return unique
 }
 

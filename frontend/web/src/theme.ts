@@ -12,6 +12,7 @@ export const UI_COLORS = {
   accent: '#AE9E7B',        // Muted Bronze/Gold
   success: '#4D8B7A',       // Desaturated Sage Green
   danger: '#B35A5A',        // Muted Rose Red
+  warning: '#D4A84B',       // Amber/Gold for medium confidence
   ma7: '#AE9E7B',           // Matching Bronze
   ma25: '#7B8AAE',          // Muted Steel Blue
   ma99: '#6B7280',          // Neutral Slate

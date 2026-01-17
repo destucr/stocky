@@ -1,20 +1,32 @@
 # Stocky
 
-Real-time stock and crypto tracking dashboard. Go backend with zero-copy WebSocket broadcasting, React frontend with direct DOM manipulation for high-frequency updates.
+Stocky is a real-time market analytics dashboard that tracks both cryptocurrency pairs and select US equities. It uses a Go backend to ingest live Finnhub trades and a React + TypeScript frontend for visualization. The project emphasizes low-latency streaming, transparent data persistence, and a modern, responsive UI.
 
 ![Stocky Screenshot](assets/screenshot.png)
 
 ## Features
 
-WebSocket streaming from Finnhub with PostgreSQL persistence. Frontend uses direct DOM updates for price changes. Dual storage: 24h raw trades, permanent 1min candles. Candlestick, line, and area charts with MA7/25/99.
+- **Low-Latency Streaming:** Direct WebSocket fan-out keeps UI latency low without compromising correctness.
+- **Real-Time UI:** Legend and chart widgets use refs + imperative updates to keep interactivity smooth even during heavy trade bursts.
+- **Multi-Chart Visualization:** Switch between **Candlestick**, **Line**, and **Area** views with synchronized volume panes.
+- **Persistent Storage:** Raw trades are archived into PostgreSQL, with scheduled jobs rolling them into 1-minute candles for long-term retention.
+- **Gapless History:** The `/api/history` endpoint merges archived candles with live trades to avoid gaps during archival cycles.
+- **AI Signals (Optional):** A Python-based agent generates BUY/SELL/HOLD signals and writes them into the same database, exposed via `/api/signal`.
+- **Configurable Logos:** Metadata mapping serves light-weight logos for both crypto and equities with fallbacks when remote assets fail.
 
 ## Stack
 
-![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=flat&logo=postgresql&logoColor=white)
-![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)
-![Material UI](https://img.shields.io/badge/Material_UI-0081CB?style=flat&logo=mui&logoColor=white)
+### Backend (Go)
+- **WebSocket Fan-out:** Broadcasts live Finnhub payloads to connected clients while also persisting them to memory + Postgres.
+- **DB Worker Pool:** Dedicated goroutine pool prevents spikes in trade volume from blocking ingestion.
+- **Signal APIs:** REST endpoints expose historic OHLC data, latest price snapshots, and optional AI-generated signals.
+- **Archival Jobs:** Background tasks aggregate raw trades into 1-minute candles and prune old rows.
+
+### Frontend (React + TS)
+- **Imperative Legend:** `useImperativeHandle` updates legend values without re-rendering the entire layout.
+- **Chart Syncing:** Dual price/volume panes stay aligned through logical-range subscriptions and manual debounce.
+- **State Persistence:** LocalStorage caches last selected symbol, interval, and chart type.
+- **Signal Widget:** Optional component listens for broadcasted AI signals and surfaces entry/exit context.
 
 ## Setup
 
@@ -30,7 +42,11 @@ docker-compose up
 
 Open `localhost:5173` in your browser.
 
-### Option 2: Manual Setup
+### Prerequisites
+- Go 1.24+
+- Node.js 18+ and npm
+- PostgreSQL 15+ (or compatible managed instance)
+- Finnhub API key (for realtime data)
 
 **Prerequisites:** Go 1.24+, Node.js, PostgreSQL
 
@@ -40,36 +56,18 @@ git clone https://github.com/destucr/stocky.git
 cd stocky
 ```
 
-**2. Configure backend**
+2. **Backend Setup:**
+   - Copy `.env.example` (if present) or set `FINNHUB_API_KEY`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`.
+   - In `backend/`: `go run main.go` (or `docker-compose up` to start backend + Postgres + optional agent).
 
-Create `backend/.env`:
-```
-DB_CONN_STRING=postgresql://user:password@localhost:5432/stocky
-FINNHUB_API_KEY=your_api_key
-```
+3. **Frontend Setup:**
+   - In `frontend/web/`: `npm install`
+   - Development server: `npm run dev`
+   - Production build: `npm run build` then serve `frontend/web/dist`
 
-Get a free API key from [Finnhub](https://finnhub.io/register).
-
-**3. Initialize database**
-```bash
-psql -U postgres -c "CREATE DATABASE stocky;"
-# Run migrations if available
-```
-
-**4. Start backend**
-```bash
-cd backend
-go run main.go
-```
-
-**5. Start frontend** (new terminal)
-```bash
-cd frontend/web
-npm install
-npm run dev
-```
-
-Open browser to the URL shown by Vite (typically `localhost:5173`).
+4. **Optional AI Agent:**
+   - Requires Python 3.10+, pandas, scikit-learn, and access to the same Postgres.
+   - See `TRADING_SYSTEM.md` for research context and `agent/README.md` for deployment instructions.
 
 ## License
 
