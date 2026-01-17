@@ -101,6 +101,18 @@ func (s *PostgresStore) InitSchema(ctx context.Context) error {
 		PRIMARY KEY (symbol, interval_secs, timestamp)
 	);
 	CREATE INDEX IF NOT EXISTS idx_candles_lookup ON persistent_candles (symbol, interval_secs, timestamp DESC);
+
+	CREATE TABLE IF NOT EXISTS signals (
+		id SERIAL PRIMARY KEY,
+		symbol TEXT NOT NULL,
+		signal_type TEXT NOT NULL,
+		price DOUBLE PRECISION NOT NULL,
+		target DOUBLE PRECISION NOT NULL,
+		stop DOUBLE PRECISION NOT NULL,
+		probability DOUBLE PRECISION NOT NULL,
+		timestamp TIMESTAMPTZ NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_signals_lookup ON signals (symbol, timestamp DESC);
 	`
 	_, err := s.pool.Exec(ctx, query)
 	return err
@@ -243,6 +255,36 @@ func (s *PostgresStore) ArchiveTradesToCandles(ctx context.Context, intervalSeco
 	_, err := s.pool.Exec(ctx, query, intervalSeconds)
 	return err
 }
+
+type Signal struct {
+	ID          int64     `json:"id"`
+	Symbol      string    `json:"symbol"`
+	Type        string    `json:"type"`
+	Price       float64   `json:"price"`
+	Target      float64   `json:"target"`
+	Stop        float64   `json:"stop"`
+	Probability float64   `json:"probability"`
+	Timestamp   time.Time `json:"timestamp"`
+}
+
+func (s *PostgresStore) GetLatestSignal(ctx context.Context, symbol string) (*Signal, error) {
+	query := `
+		SELECT id, symbol, signal_type, price, target, stop, probability, timestamp
+		FROM signals
+		WHERE symbol = $1
+		ORDER BY timestamp DESC
+		LIMIT 1`
+	
+	var sig Signal
+	err := s.pool.QueryRow(ctx, query, symbol).Scan(
+		&sig.ID, &sig.Symbol, &sig.Type, &sig.Price, &sig.Target, &sig.Stop, &sig.Probability, &sig.Timestamp,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &sig, nil
+}
+
 func (s *PostgresStore) Close() {
 	s.pool.Close()
 }

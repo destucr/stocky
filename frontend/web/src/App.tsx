@@ -27,6 +27,7 @@ import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong';
 import theme, { UI_COLORS as COLORS } from './theme';
 import StockLegend, { StockLegendRef } from './components/StockLegend';
+import SignalWidget from './components/SignalWidget';
 
 // Types corresponding to backend
 interface TradeData {
@@ -80,17 +81,34 @@ const AVAILABLE_INTERVALS = [
 ];
 
 function App() {
-  const [activeSymbol, setActiveSymbol] = useState<string>('');
+  const [activeSymbol, setActiveSymbol] = useState<string>(() => localStorage.getItem('stocky_activeSymbol') || '');
   const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [symbolMetadata, setSymbolMetadata] = useState<Record<string, SymbolMetadata>>({});
   const symbolMetadataRef = useRef<Record<string, SymbolMetadata>>({});
   const [isConnected, setIsConnected] = useState(false);
-  const [chartType, setChartType] = useState<'candlestick' | 'line' | 'area'>('candlestick');
+  const [isChartReady, setIsChartReady] = useState(false); // Hide chart until data loaded
+  const [chartType, setChartType] = useState<'candlestick' | 'line' | 'area'>(() => (localStorage.getItem('stocky_chartType') as any) || 'candlestick');
   const [isLogScale, setIsLogScale] = useState(false);
-  const [chartInterval, setChartInterval] = useState<number>(60);
+  const [chartInterval, setChartInterval] = useState<number>(() => {
+      const saved = localStorage.getItem('stocky_chartInterval');
+      return saved ? Number(saved) : 60;
+  });
   const intervalRef = useRef(chartInterval);
   const lastSymbolRef = useRef<string>('');
   const [isAutoScale, setIsAutoScale] = useState(true);
+
+  // Persistence Effects
+  useEffect(() => {
+    if (activeSymbol) localStorage.setItem('stocky_activeSymbol', activeSymbol);
+  }, [activeSymbol]);
+
+  useEffect(() => {
+    localStorage.setItem('stocky_chartType', chartType);
+  }, [chartType]);
+
+  useEffect(() => {
+    localStorage.setItem('stocky_chartInterval', String(chartInterval));
+  }, [chartInterval]);
   const lastPriceRef = useRef<number | null>(null);
   const lastRealPriceRef = useRef<number | null>(null);
   const lastTickColorRef = useRef<string>('');
@@ -169,10 +187,14 @@ function App() {
 
   // Legend Updater - Now uses Ref for performance
   const updateLegendUI = (candle: any, _symbol: string, ma7?: number, ma25?: number, ma99?: number, tickColor?: string) => {
+    // Get live price from refs
+    const livePrice = lastRealPriceRef.current ?? currentCandleRef.current?.close;
+
     legendRef.current?.update({
         candle,
         mas: { ma7, ma25, ma99 },
-        tickColor
+        tickColor,
+        livePrice: livePrice ?? undefined
     });
   };
 
@@ -246,27 +268,42 @@ function App() {
       const priceTimeScale = priceChart.timeScale();
       const volumeTimeScale = volumeChart.timeScale();
 
-      const sync = (src: any, target: any) => {
-        const handler = () => {
-          if (isSyncingRef.current) return;
-          isSyncingRef.current = true;
-          try {
-            const logicalRange = src.getVisibleLogicalRange();
-            if (logicalRange) {
-              target.setVisibleLogicalRange(logicalRange);
-            }
-          } catch (err) {
-            // Ignore sync errors during load
-          } finally {
-            isSyncingRef.current = false;
-          }
-        };
-        src.subscribeVisibleTimeRangeChange(handler);
-        return () => src.unsubscribeVisibleTimeRangeChange(handler);
+      // Debounce saving visible range to localStorage
+      let saveRangeTimeout: number | null = null;
+      const saveVisibleRange = (range: { from: number, to: number }) => {
+        if (saveRangeTimeout) clearTimeout(saveRangeTimeout);
+        saveRangeTimeout = window.setTimeout(() => {
+          localStorage.setItem('stocky_visibleRange', JSON.stringify(range));
+        }, 500);
       };
 
-      unsubscribes.push(sync(priceTimeScale, volumeTimeScale));
-      unsubscribes.push(sync(volumeTimeScale, priceTimeScale));
+      // Use subscribeVisibleLogicalRangeChange for tighter sync
+      const syncTimeScales = (source: ReturnType<typeof priceChart.timeScale>, target: ReturnType<typeof priceChart.timeScale>, isSource: 'price' | 'volume') => {
+        const handler = (logicalRange: { from: number; to: number } | null) => {
+          if (isSyncingRef.current) return;
+          if (!logicalRange) return;
+          
+          isSyncingRef.current = true;
+          try {
+            target.setVisibleLogicalRange(logicalRange);
+            // Only save from price chart to avoid double saves
+            if (isSource === 'price') {
+              saveVisibleRange(logicalRange);
+            }
+          } catch {
+            // Ignore sync errors
+          }
+          // Release lock on next frame to allow smooth continuous panning
+          requestAnimationFrame(() => {
+            isSyncingRef.current = false;
+          });
+        };
+        source.subscribeVisibleLogicalRangeChange(handler);
+        return () => source.unsubscribeVisibleLogicalRangeChange(handler);
+      };
+
+      unsubscribes.push(syncTimeScales(priceTimeScale, volumeTimeScale, 'price'));
+      unsubscribes.push(syncTimeScales(volumeTimeScale, priceTimeScale, 'volume'));
 
                       const candlestickSeries = priceChart.addCandlestickSeries({
                         upColor: COLORS.success, 
@@ -569,22 +606,27 @@ function App() {
           parts.forEach((jsonStr: string) => {
             try {
               const message: BackendMessage = JSON.parse(jsonStr);
-              if (message.type === 'trade') {
-                const receivedSymbols = new Set(message.data.map(t => t.s));
-                setAvailableSymbols(prev => {
-                  const newSymbols = Array.from(receivedSymbols).filter(s => !prev.includes(s));
-                  return newSymbols.length > 0 ? [...prev, ...newSymbols].sort() : prev;
-                });
-
-                            // Process all trades in the message but only update chart for the active symbol once
-                            const trades = message.data.filter(t => t.s === activeSymbolRef.current);
-                            if (trades.length > 0) {
-                                // 1. Process all trade data first (CPU only)
-                                trades.forEach(trade => processTrade(trade));
-                                // 2. Draw the final state once (Heavy DOM/Canvas work)
-                                drawChartUpdate(trades[trades.length - 1].p);
-                            }              }
-            } catch (innerErr) {
+                            if (message.type === 'trade') {
+                              const receivedSymbols = new Set(message.data.map(t => t.s));
+                              setAvailableSymbols(prev => {
+                                const newSymbols = Array.from(receivedSymbols).filter(s => !prev.includes(s));
+                                return newSymbols.length > 0 ? [...prev, ...newSymbols].sort() : prev;
+                              });
+              
+                                          // Process all trades in the message but only update chart for the active symbol once
+                                          const trades = message.data.filter(t => t.s === activeSymbolRef.current);
+                                          if (trades.length > 0) {
+                                              // 1. Process all trade data first (CPU only)
+                                              trades.forEach(trade => processTrade(trade));
+                                              // 2. Draw the final state once (Heavy DOM/Canvas work)
+                                              drawChartUpdate(trades[trades.length - 1].p);
+                                          }              
+                            } else if (message.type === 'signal') {
+                              console.log('Real-time signal received:', message.data);
+                              // Dispatch a custom event so the SignalWidget can react immediately
+                              window.dispatchEvent(new CustomEvent('stocky-signal', { detail: message.data }));
+                            }
+                        } catch (innerErr) {
               console.error("Single frame parse error:", innerErr, "Raw string:", jsonStr);
             }
           });
@@ -603,12 +645,24 @@ function App() {
     };
   }, []);
 
-  // If no symbol selected, select the first one found
+  // Restore saved symbol when available, or select first symbol
   useEffect(() => {
-    if (!activeSymbol && availableSymbols.length > 0) {
-      setActiveSymbol(availableSymbols[0]);
+    if (availableSymbols.length > 0) {
+      // If we have a saved symbol and it's now available, keep it
+      // Otherwise, if no valid selection, pick the first available
+      if (!activeSymbol || !availableSymbols.includes(activeSymbol)) {
+        // Check if there's a saved symbol we should restore
+        const saved = localStorage.getItem('stocky_activeSymbol');
+        if (saved && availableSymbols.includes(saved)) {
+          setActiveSymbol(saved);
+        } else {
+          setActiveSymbol(availableSymbols[0]);
+        }
+      }
     }
   }, [availableSymbols, activeSymbol]);
+
+  const lastIntervalRef = useRef<number>(chartInterval);
 
       useEffect(() => {
         // Reset building state when symbol or interval changes
@@ -626,8 +680,17 @@ function App() {
             isAutoScaleRef.current = true;
         }
     
-        // If symbol changed, we MUST clear everything immediately to avoid mixing symbols
-        if (activeSymbol && activeSymbol !== lastSymbolRef.current) {
+        // If symbol OR interval changed, we MUST clear everything immediately
+        // to avoid mixing timeframes or symbols which causes "Cannot update oldest data" errors.
+        if (activeSymbol && (activeSymbol !== lastSymbolRef.current || chartInterval !== lastIntervalRef.current)) {
+          // Hide chart during transition to prevent visual glitch
+          setIsChartReady(false);
+          
+          // Clear saved visible range when interval changes (data points shift)
+          if (chartInterval !== lastIntervalRef.current) {
+            localStorage.removeItem('stocky_visibleRange');
+          }
+          
           if (seriesRef.current) {
             seriesRef.current.setData([]);
             lineSeriesRef.current?.setData([]);
@@ -638,13 +701,14 @@ function App() {
             ma99SeriesRef.current?.setData([]);
           }
           lastSymbolRef.current = activeSymbol;
+          lastIntervalRef.current = chartInterval;
         }
     
             // Always fetch new history for the selected interval
             if (activeSymbol) {
               fetchHistory(activeSymbol, chartInterval);
             }
-          }, [activeSymbol, chartInterval]);  const handleResetScale = () => {
+          }, [activeSymbol, chartInterval, isConnected]);  const handleResetScale = () => {
     if (chartRef.current) {
       const priceScale = chartRef.current.priceScale('right');
       priceScale.applyOptions({ 
@@ -737,8 +801,22 @@ function App() {
             ma25SeriesRef.current?.setData(ma25);
             ma99SeriesRef.current?.setData(ma99);
 
-            // Snap to latest data
-            chartRef.current?.timeScale().scrollToRealTime();
+            // Try to restore saved visible range, otherwise scroll to latest
+            const savedRangeStr = localStorage.getItem('stocky_visibleRange');
+            if (savedRangeStr) {
+                try {
+                    const savedRange = JSON.parse(savedRangeStr);
+                    if (savedRange && typeof savedRange.from === 'number' && typeof savedRange.to === 'number') {
+                        chartRef.current?.timeScale().setVisibleLogicalRange(savedRange);
+                    } else {
+                        chartRef.current?.timeScale().scrollToRealTime();
+                    }
+                } catch {
+                    chartRef.current?.timeScale().scrollToRealTime();
+                }
+            } else {
+                chartRef.current?.timeScale().scrollToRealTime();
+            }
         } catch (setDataErr) {
             console.error("Error setting chart data:", setDataErr);
             throw setDataErr;
@@ -770,6 +848,9 @@ function App() {
             const padding = (max - min) * 0.05;
             lastRangeRef.current = { from: min - padding, to: max + padding };
         }
+        
+        // Mark chart as ready after data is loaded and positioned
+        setTimeout(() => setIsChartReady(true), 50);
       } else {
         // Disable sync while clearing data
         isSyncingRef.current = true;
@@ -967,11 +1048,12 @@ function App() {
                       <InputLabel id="symbol-select-label" sx={{ color: COLORS.textSecondary, fontSize: '0.85rem' }}>Symbol</InputLabel>
                       <Select
                         labelId="symbol-select-label"
-                        value={activeSymbol}
+                        value={availableSymbols.includes(activeSymbol) ? activeSymbol : ''}
                         label="Symbol"
                         onChange={(e) => setActiveSymbol(e.target.value)}
                         sx={{ color: COLORS.textPrimary, fontSize: '0.85rem', '.MuiOutlinedInput-notchedOutline': { borderColor: COLORS.borderLight } }}
                         renderValue={(selected) => {
+                          if (!selected) return <Typography sx={{ fontSize: '0.85rem', opacity: 0.5 }}>Loading...</Typography>;
                           const meta = symbolMetadata[selected];
                           return (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1121,6 +1203,9 @@ function App() {
                     </Tooltip>
                   </Box>
                </Box>
+
+               {/* Signal indicator - inline on the right */}
+               {activeSymbol && <SignalWidget symbol={activeSymbol} />}
             </Box>
 
             {/* Main Chart Area - Single Screen Viewport */}
@@ -1133,6 +1218,8 @@ function App() {
                 position: 'relative',
                 overflow: 'hidden',
                 bgcolor: COLORS.background,
+                opacity: isChartReady ? 1 : 0,
+                transition: 'opacity 0.15s ease-in-out',
               }} 
             >
                 {/* Price Chart Wrapper */}
