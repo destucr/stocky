@@ -4,7 +4,7 @@ Stocky is a real-time market analytics dashboard that tracks both cryptocurrency
 
 ![Stocky Screenshot](assets/screenshot.png)
 
-## Key Features
+## Features
 
 - **Low-Latency Streaming:** Direct WebSocket fan-out keeps UI latency low without compromising correctness.
 - **Real-Time UI:** Legend and chart widgets use refs + imperative updates to keep interactivity smooth even during heavy trade bursts.
@@ -14,7 +14,7 @@ Stocky is a real-time market analytics dashboard that tracks both cryptocurrency
 - **AI Signals (Optional):** A Python-based agent generates BUY/SELL/HOLD signals and writes them into the same database, exposed via `/api/signal`.
 - **Configurable Logos:** Metadata mapping serves light-weight logos for both crypto and equities with fallbacks when remote assets fail.
 
-## Performance Stack
+## Stack
 
 ### Backend (Go)
 - **WebSocket Fan-out:** Broadcasts live Finnhub payloads to connected clients while also persisting them to memory + Postgres.
@@ -28,15 +28,19 @@ Stocky is a real-time market analytics dashboard that tracks both cryptocurrency
 - **State Persistence:** LocalStorage caches last selected symbol, interval, and chart type.
 - **Signal Widget:** Optional component listens for broadcasted AI signals and surfaces entry/exit context.
 
-## Tech Stack
+## Setup
 
-- **Language:** Go 1.24+, TypeScript
-- **Database:** PostgreSQL (with `pgx` pool)
-- **Real-time:** Gorilla WebSocket
-- **Charting:** Lightweight Charts (TradingView)
-- **UI:** Material UI (MUI)
+### Option 1: Docker Compose (Recommended)
 
-## Getting Started
+```bash
+git clone https://github.com/destucr/stocky.git
+cd stocky
+cp .env.example .env
+# Edit .env and add your FINNHUB_API_KEY
+docker-compose up
+```
+
+Open `localhost:5173` in your browser.
 
 ### Prerequisites
 - Go 1.24+
@@ -44,13 +48,13 @@ Stocky is a real-time market analytics dashboard that tracks both cryptocurrency
 - PostgreSQL 15+ (or compatible managed instance)
 - Finnhub API key (for realtime data)
 
-### Installation
+**Prerequisites:** Go 1.24+, Node.js, PostgreSQL
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/destucr/stocky.git
-   cd stocky
-   ```
+**1. Clone the repository**
+```bash
+git clone https://github.com/destucr/stocky.git
+cd stocky
+```
 
 2. **Backend Setup:**
    - Copy `.env.example` (if present) or set `FINNHUB_API_KEY`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`.
@@ -67,4 +71,4 @@ Stocky is a real-time market analytics dashboard that tracks both cryptocurrency
 
 ## License
 
-This project is licensed under the Apache License 2.0.
+Apache License 2.0
