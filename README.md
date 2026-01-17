@@ -1,31 +1,32 @@
 # Stocky
 
-Stocky is a high-performance, real-time stock and cryptocurrency tracking dashboard. Built with a focus on ultra-low latency and long-term data persistence, it features a Go backend capable of processing high-frequency trade data and a React frontend that bypasses standard rendering bottlenecks for an "instant" feel.
+Stocky is a real-time market analytics dashboard that tracks both cryptocurrency pairs and select US equities. It uses a Go backend to ingest live Finnhub trades and a React + TypeScript frontend for visualization. The project emphasizes low-latency streaming, transparent data persistence, and a modern, responsive UI.
 
 ![Stocky Screenshot](assets/screenshot.png)
 
 ## Key Features
 
-- **Ultra-Low Latency:** Optimized data path using zero-copy broadcasting, `TCP_NODELAY`, and WebSocket write-batching.
-- **"Binance-Speed" UI:** Bypasses React's Virtual DOM for high-frequency legend updates using direct DOM manipulation.
-- **Multi-Chart Visualization:** Switch instantly between **Candlestick**, **Line**, and **Mountain (Area)** views.
-- **Infinite Persistence:** Dual-table archiving system that stores raw trades for 24h and permanently archives 1-minute OHLC candles.
-- **Gapless History:** Intelligent API that merges archived records with live aggregated trades via SQL UNION for a seamless chart.
-- **Smart Logic:** High-performance rolling Moving Averages (MA7, MA25, MA99) and tick-based color coding (Buy/Sell detection).
-- **SVG Logos:** High-resolution vector logos sourced from TradingView and Coingecko with graceful error fallbacks.
+- **Low-Latency Streaming:** Direct WebSocket fan-out keeps UI latency low without compromising correctness.
+- **Real-Time UI:** Legend and chart widgets use refs + imperative updates to keep interactivity smooth even during heavy trade bursts.
+- **Multi-Chart Visualization:** Switch between **Candlestick**, **Line**, and **Area** views with synchronized volume panes.
+- **Persistent Storage:** Raw trades are archived into PostgreSQL, with scheduled jobs rolling them into 1-minute candles for long-term retention.
+- **Gapless History:** The `/api/history` endpoint merges archived candles with live trades to avoid gaps during archival cycles.
+- **AI Signals (Optional):** A Python-based agent generates BUY/SELL/HOLD signals and writes them into the same database, exposed via `/api/signal`.
+- **Configurable Logos:** Metadata mapping serves light-weight logos for both crypto and equities with fallbacks when remote assets fail.
 
 ## Performance Stack
 
 ### Backend (Go)
-- **Zero-Copy Broadcast:** Raw bytes from Finnhub are sent directly to clients, eliminating JSON overhead in the hot path.
-- **DB Worker Pool:** Dedicated goroutine pool for non-blocking database persistence.
-- **Optimized Networking:** Nagle's algorithm disabled (`TCP_NODELAY`) for immediate packet transmission.
-- **Advanced SQL:** Deterministic OHLC aggregation with bucket-level deduplication.
+- **WebSocket Fan-out:** Broadcasts live Finnhub payloads to connected clients while also persisting them to memory + Postgres.
+- **DB Worker Pool:** Dedicated goroutine pool prevents spikes in trade volume from blocking ingestion.
+- **Signal APIs:** REST endpoints expose historic OHLC data, latest price snapshots, and optional AI-generated signals.
+- **Archival Jobs:** Background tasks aggregate raw trades into 1-minute candles and prune old rows.
 
 ### Frontend (React + TS)
-- **Direct DOM Access:** Uses `Refs` and `useImperativeHandle` to update prices without triggering full component re-renders.
-- **Frame-Level Batching:** Aggregates multiple micro-trades per WebSocket frame into a single chart redraw.
-- **Logical Range Sync:** Perfectly synchronized Price and Volume charts that maintain horizontal buffers during scrolling.
+- **Imperative Legend:** `useImperativeHandle` updates legend values without re-rendering the entire layout.
+- **Chart Syncing:** Dual price/volume panes stay aligned through logical-range subscriptions and manual debounce.
+- **State Persistence:** LocalStorage caches last selected symbol, interval, and chart type.
+- **Signal Widget:** Optional component listens for broadcasted AI signals and surfaces entry/exit context.
 
 ## Tech Stack
 
@@ -39,8 +40,9 @@ Stocky is a high-performance, real-time stock and cryptocurrency tracking dashbo
 
 ### Prerequisites
 - Go 1.24+
-- Node.js & npm
-- PostgreSQL
+- Node.js 18+ and npm
+- PostgreSQL 15+ (or compatible managed instance)
+- Finnhub API key (for realtime data)
 
 ### Installation
 
@@ -51,11 +53,17 @@ Stocky is a high-performance, real-time stock and cryptocurrency tracking dashbo
    ```
 
 2. **Backend Setup:**
-   - Create a `.env` in `backend/` with `DB_CONN_STRING` and `FINNHUB_API_KEY`.
-   - Run: `go run main.go`
+   - Copy `.env.example` (if present) or set `FINNHUB_API_KEY`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`.
+   - In `backend/`: `go run main.go` (or `docker-compose up` to start backend + Postgres + optional agent).
 
 3. **Frontend Setup:**
-   - In `frontend/web/`: `npm install` then `npm run dev`
+   - In `frontend/web/`: `npm install`
+   - Development server: `npm run dev`
+   - Production build: `npm run build` then serve `frontend/web/dist`
+
+4. **Optional AI Agent:**
+   - Requires Python 3.10+, pandas, scikit-learn, and access to the same Postgres.
+   - See `TRADING_SYSTEM.md` for research context and `agent/README.md` for deployment instructions.
 
 ## License
 
